@@ -1,0 +1,10 @@
+{application, osmo_gsup, [
+  {description, "OSMOCOM GSUP library"},
+  {vsn, "0.1.1"},
+  {registered, []},
+  {applications, [
+    kernel,
+    stdlib,
+    lager
+  ]}
+]}.
