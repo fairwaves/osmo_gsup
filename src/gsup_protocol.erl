@@ -7,10 +7,11 @@ decode(<<PSize:16, 16#ee, Packet:PSize/binary, Rest/binary>>) ->
   Messages = known_messages(),
   Params = decode_iei(Tail, #{}),
   case Messages of
-    #{MsgNum := #{msg := Msg, mandatory := Mandatory}} ->
-      case maps:size(maps:with(Mandatory, Params)) == length(Mandatory) of
-        true -> {ok, {Params#{message_type => Msg}, Rest}};
-        false -> {error, {params_missing, Mandatory, Params}}
+    #{MsgNum := #{msg := Msg, mandatory := Mandatory, fields := Fields}} ->
+      case {maps:size(maps:with(Mandatory, Params)) == length(Mandatory), maps:size(maps:without(Fields, Params)) == 0} of
+        {true, true} -> {ok, {Params#{message_type => Msg}, Rest}};
+        {false, _} -> {error, {params_missing, Mandatory -- maps:keys(Params)}};
+        {_, false} -> {error, {params_not_expected, maps:keys(Params) -- Fields}}
       end;
     _ -> 
       {error, {unknown_message, MsgNum, Params}}
@@ -30,14 +31,20 @@ decode_iei(<<16#01, Len, IMSI:Len/binary, Tail/binary>>, Map) ->
 decode_iei(<<16#02, Len, Cause:Len/unit:8, Tail/binary>>, Map) ->
   decode_iei(Tail, Map#{cause => Cause});
 
-decode_iei(<<16#03, Len, AuthTuple:Len/binary, Tail/binary>>, Map) ->
-  decode_iei(Tail, decode_auth_tuple(AuthTuple, Map));
+decode_iei(<<16#03, Len, AuthTuple0:Len/binary, Tail/binary>>, Map) ->
+  List = maps:get(auth_tuples, Map, []),
+  AuthTuple = decode_auth_tuple(AuthTuple0, #{}),
+  true = check_auth_tuple(AuthTuple),
+  decode_iei(Tail, Map#{auth_tuples => List ++ [AuthTuple]});
 
 decode_iei(<<16#04, 0, Tail/binary>>, Map) ->
   decode_iei(Tail, Map#{pdp_info_complete => <<>>});
 
-decode_iei(<<16#05, Len, PDPInfo:Len/binary, Tail/binary>>, Map) ->
-  decode_iei(Tail, decode_pdp_info(PDPInfo, Map));
+decode_iei(<<16#05, Len, PDPInfo0:Len/binary, Tail/binary>>, Map) ->
+  List = maps:get(pdp_info, Map, []),
+  PDPInfo = decode_pdp_info(PDPInfo0, #{}),
+  true = check_pdp_info(PDPInfo),
+  decode_iei(Tail, Map#{pdp_info => List ++ [PDPInfo]});
 
 decode_iei(<<16#06, Len, CancellationType:Len/unit:8, Tail/binary>>, Map) ->
   decode_iei(Tail, Map#{cancellation_type => CancellationType});
@@ -100,11 +107,7 @@ decode_iei(<<16#50, Len, IMEI:Len/binary, Tail/binary>>, Map) ->
   decode_iei(Tail, Map#{imei => IMEI});
 
 decode_iei(<<16#51, Len, IMEIResult:Len/unit:8, Tail/binary>>, Map) ->
-  decode_iei(Tail, Map#{imei_check_result => IMEIResult});
-
-decode_iei(Tail, Map) -> 
-  lager:info("Unknown tail: ~p", [Tail]),
-  Map.
+  decode_iei(Tail, Map#{imei_check_result => IMEIResult}).
 
 decode_imsi(<<>>, Buffer) -> Buffer;
 
@@ -167,40 +170,40 @@ decode_pdp_info(<<>>, Map) -> Map.
 
 known_messages() ->
   #{
-    16#04 => #{msg => lu_request, mandatory => [imsi]},
-    16#05 => #{msg => lu_error, mandatory => [imsi, cause]},
-    16#06 => #{msg => lu_result, mandatory => [imsi]},
-    16#08 => #{message_type => sai_request, mandatory => [imsi]},
-    16#09 => #{message_type => sai_error, mandatory => [imsi, cause]},
-    16#0a => #{message_type => sai_result, mandatory => [imsi]},
-    16#0b => #{message_type => af_report, mandatory => [imsi]},
-    16#0c => #{message_type => purge_ms_request, mandatory => [imsi, hlr_number]},
-    16#0d => #{message_type => purge_ms_error, mandatory => [imsi, cause]},
-    16#0e => #{message_type => purge_ms_result, mandatory => [imsi]},
-    16#10 => #{msg => isd_request, mandatory => [imsi]},
-    16#11 => #{msg => isd_error, mandatory => [imsi, cause]},
-    16#12 => #{msg => isd_result, mandatory => [imsi]},
-    16#14 => #{message_type => dsd_request, mandatory => [imsi]},
-    16#15 => #{message_type => dsd_error, mandatory => [imsi, cause]},
-    16#16 => #{message_type => dsd_result, mandatory => [imsi]},
-    16#1c => #{message_type => lc_request, mandatory => [imsi]},
-    16#1d => #{message_type => lc_error, mandatory => [imsi, cause]},
-    16#1e => #{message_type => lc_result, mandatory => [imsi]},
-    16#20 => #{msg => ss_request, mandatory => [session_id, session_state, imsi]},
-    16#21 => #{msg => ss_error, mandatory => [session_id, session_state, imsi, cause]},
-    16#22 => #{msg => ss_result, mandatory => [session_id, session_state, imsi]},
-    16#24 => #{msg => mo_forward_request, mandatory => [msg_ref, imsi, sm_rp_da, sm_rp_oa, sm_rp_ui]},
-    16#25 => #{msg => mo_forward_error, mandatory => [msg_ref, imsi, sm_rp_cause]},
-    16#26 => #{msg => mo_forward_result, mandatory => [msg_ref, imsi]},
-    16#28 => #{msg => mt_forward_request, mandatory => [msg_ref, imsi, sm_rp_da, sm_rp_oa, sm_rp_ui]},
-    16#29 => #{msg => mt_forward_error, mandatory => [msg_ref, imsi, sm_rp_cause]},
-    16#2a => #{msg => mt_forward_result, mandatory => [msg_ref, imsi]},
-    16#2c => #{message_type => ready_for_sm_request, mandatory => [imsi, sm_rp_mr, sm_alert_reason]},
-    16#2d => #{message_type => ready_for_sm_error, mandatory => [imsi, sm_rp_mr, sm_sm_rp_cause]},
-    16#2e => #{message_type => ready_for_sm_result, mandatory => [imsi, sm_rp_mr]},
-    16#30 => #{message_type => ci_request, mandatory => [imsi, imei]},
-    16#31 => #{message_type => ci_error, mandatory => [imsi, cause]},
-    16#32 => #{message_type => ci_result, mandatory => [imsi, imei_check_result]}
+    16#04 => #{msg => lu_request, mandatory => [imsi], fields => [imsi, cndomain]},
+    16#05 => #{msg => lu_error, mandatory => [imsi, cause], fields => [imsi, cause]},
+    16#06 => #{msg => lu_result, mandatory => [imsi], fields => [imsi, msisdn, hlr_number, pdp_info_complete, pdp_info]},
+    16#08 => #{message_type => sai_request, mandatory => [imsi], fields => [imsi, cndomain, auts, rand]},
+    16#09 => #{message_type => sai_error, mandatory => [imsi, cause], fields => [imsi, cause]},
+    16#0a => #{message_type => sai_result, mandatory => [imsi], fields => [imsi, auth_tuples]},
+    16#0b => #{message_type => af_report, mandatory => [imsi], fields => [imsi, cndomain]},
+    16#0c => #{message_type => purge_ms_request, mandatory => [imsi, hlr_number], fields => [imsi, cndomain, hlr_number]},
+    16#0d => #{message_type => purge_ms_error, mandatory => [imsi, cause], fields => [imsi, cause]},
+    16#0e => #{message_type => purge_ms_result, mandatory => [imsi, freeze_p_tmsi], fields => [imsi, freeze_p_tmsi]},
+    16#10 => #{msg => isd_request, mandatory => [imsi, pdp_info_complete], fields => [imsi, cndomain, msisdn, hlr_number, pdp_info_complete, pdp_info, pdp_charging]},
+    16#11 => #{msg => isd_error, mandatory => [imsi, cause], fields => [imsi, cause]},
+    16#12 => #{msg => isd_result, mandatory => [imsi], fields => [imsi]},
+    16#14 => #{message_type => dsd_request, mandatory => [imsi], fields => [imsi, cndomain, pdp_context_id]},
+    16#15 => #{message_type => dsd_error, mandatory => [imsi, cause], fields => [imsi, cause]},
+    16#16 => #{message_type => dsd_result, mandatory => [imsi], fields => [imsi]},
+    16#1c => #{message_type => lc_request, mandatory => [imsi], fields => [imsi, cndomain, cancellation_type]},
+    16#1d => #{message_type => lc_error, mandatory => [imsi, cause], fields => [imsi, cndomain]},
+    16#1e => #{message_type => lc_result, mandatory => [imsi], fields => [imsi, cndomain]},
+    16#20 => #{msg => ss_request, mandatory => [session_id, session_state, imsi], fields => [imsi, session_id, session_state, ss_info]},
+    16#21 => #{msg => ss_error, mandatory => [session_id, session_state, imsi, cause], fields => [imsi, cause, session_id, session_state]},
+    16#22 => #{msg => ss_result, mandatory => [session_id, session_state, imsi], fields => [imsi, session_id, session_state, ss_info]},
+    16#24 => #{msg => mo_forward_request, mandatory => [sm_rp_mr, imsi, sm_rp_da, sm_rp_oa, sm_rp_ui], fields => [sm_rp_mr, imsi, sm_rp_da, sm_rp_oa, sm_rp_ui]},
+    16#25 => #{msg => mo_forward_error, mandatory => [sm_rp_mr, imsi, sm_rp_cause], fields => [sm_rp_mr, imsi, sm_rp_cause, sm_rp_ui]},
+    16#26 => #{msg => mo_forward_result, mandatory => [sm_rp_mr, imsi], fields => [sm_rp_mr, imsi]},
+    16#28 => #{msg => mt_forward_request, mandatory => [sm_rp_mr, imsi, sm_rp_da, sm_rp_oa, sm_rp_ui], fields => [sm_rp_mr, imsi, sm_rp_da, sm_rp_oa, sm_rp_ui, sm_rp_mms]},
+    16#29 => #{msg => mt_forward_error, mandatory => [sm_rp_mr, imsi, sm_rp_cause], fields => [sm_rp_mr, imsi, sm_rp_cause, sm_rp_ui]},
+    16#2a => #{msg => mt_forward_result, mandatory => [sm_rp_mr, imsi], fields => [sm_rp_mr, imsi]},
+    16#2c => #{message_type => ready_for_sm_request, mandatory => [imsi, sm_rp_mr, sm_alert_reason], fields => [imsi, sm_rp_mr, sm_alert_reason]},
+    16#2d => #{message_type => ready_for_sm_error, mandatory => [imsi, sm_rp_mr, sm_sm_rp_cause], fields => [imsi, sm_rp_mr, sm_sm_rp_cause, sm_rp_ui]},
+    16#2e => #{message_type => ready_for_sm_result, mandatory => [imsi, sm_rp_mr], fields => [imsi, sm_rp_mr]},
+    16#30 => #{message_type => ci_request, mandatory => [imsi, imei], fields => [imsi, imei]},
+    16#31 => #{message_type => ci_error, mandatory => [imsi, cause], fields => [imsi, cause]},
+    16#32 => #{message_type => ci_result, mandatory => [imsi, imei_check_result], fields => [imsi, imei_check_result]}
   }.
 
 encode(Params = #{message_type := MsgAtom}) when is_atom(MsgAtom) ->
@@ -223,49 +226,84 @@ encode(Params = #{message_type := MsgAtom}) when is_atom(MsgAtom) ->
 
 encode(MsgNum, Params) when is_integer(MsgNum), is_map(Params), MsgNum >=0, MsgNum =< 255 ->
   case known_messages() of
-    #{MsgNum := #{msg := _Msg, text := Text, mandatory := Mandatory}} ->
-      lager:info("Reply ~s: ~p", [Text, Params]),
-      case maps:size(maps:with(Mandatory, Params)) == length(Mandatory) of
-        true -> 
+    #{MsgNum := #{msg := _Msg, mandatory := Mandatory, fields := Fields}} ->
+      case {maps:size(maps:with(Mandatory, Params)) == length(Mandatory), maps:size(maps:without(Fields, Params)) == 0} of
+        {true, true} -> 
           Tail = encode_iei(Params, <<>>),
           Len = size(Tail) + 2,
           {ok, <<Len:16, 16#ee, 16#05, MsgNum, Tail/binary>>};
-        false ->
-          lager:warning("Mandatory params missing from ~p", [Mandatory]),
-          {error, missing_params}
+        {false, _} -> {error, {params_missing, Mandatory -- maps:keys(Params)}};
+        {_, false} -> {error, {params_not_expected, maps:keys(Params) -- Fields}}
       end;
     _ -> 
-      lager:info("Unknown message in reply (~p): ~p", [MsgNum, Params]),
       {error, unknown_message}
   end.
 
-encode_iei(#{imsi := IMSI0} = Params, Tail) ->
-  IMSI = encode_imsi(IMSI0, <<>>),
-  Len = size(IMSI),
-  encode_iei(maps:without([imsi], Params), <<Tail/binary, 16#01, Len, IMSI/binary>>);
-
-encode_iei(#{session_info := Value} = Params, Tail) ->
+encode_iei(#{imsi := Value0} = Params, Tail) ->
+  Value = encode_imsi(Value0, <<>>),
   Len = size(Value),
-  encode_iei(maps:without([session_info], Params), <<Tail/binary, (code_param(session_info)):8, Len, Value/binary>>);
-
-encode_iei(#{sm_rp_ui := Value} = Params, Tail) ->
-  Len = size(Value),
-  encode_iei(maps:without([sm_rp_ui], Params), <<Tail/binary, (code_param(sm_rp_ui)):8, Len, Value/binary>>);
-
-encode_iei(#{sm_rp_oa := Value0} = Params, Tail) ->
-  Value = encode_oa_da(Value0),
-  Len = size(Value),
-  encode_iei(maps:without([sm_rp_oa], Params), <<Tail/binary, (code_param(sm_rp_oa)):8, Len, Value/binary>>);
-
-encode_iei(#{sm_rp_da := Value0} = Params, Tail) ->
-  Value = encode_oa_da(Value0),
-  Len = size(Value),
-  encode_iei(maps:without([sm_rp_da], Params), <<Tail/binary, (code_param(sm_rp_da)):8, Len, Value/binary>>);
+  encode_iei(maps:without([imsi], Params), <<Tail/binary, (code_param(imsi)):8, Len, Value/binary>>);
 
 encode_iei(#{cause := Value0} = Params, Tail) ->
   Value = encode_varint(Value0),
   Len = size(Value),
   encode_iei(maps:without([cause], Params), <<Tail/binary, (code_param(cause)):8, Len, Value/binary>>);
+
+encode_iei(#{auth_tuples := []} = Params, Tail) ->
+  encode_iei(maps:without([auth_tuples], Params), Tail);
+
+encode_iei(#{auth_tuples := [Tuple | Tuples]} = Params, Tail) ->
+  true = check_auth_tuple(Tuple),
+  Value = encode_auth_tuple(Tuple, <<>>),
+  Len = size(Value),
+  encode_iei(Params#{auth_tuples => Tuples}, <<Tail/binary, (code_param(auth_tuples)):8, Len, Value/binary>>);
+
+encode_iei(#{pdp_info_complete := _} = Params, Tail) ->
+  encode_iei(maps:without([pdp_info_complete], Params), <<Tail/binary, (code_param(pdp_info_complete)):8, 0>>);
+
+encode_iei(#{pdp_info := []} = Params, Tail) ->
+  encode_iei(maps:without([pdp_info], Params), Tail);
+
+encode_iei(#{pdp_info := [PDPInfo | PDPInfoList]} = Params, Tail) -> %% PDPInfo
+  true = check_pdp_info(PDPInfo),
+  Value = encode_pdp_info(PDPInfo, <<>>),
+  Len = size(Value),
+  encode_iei(Params#{pdp_info => PDPInfoList}, <<Tail/binary, (code_param(pdp_info)):8, Len, Value/binary>>);
+
+encode_iei(#{cancellation_type := Value0} = Params, Tail) ->
+  Value = encode_varint(Value0),
+  Len = size(Value),
+  encode_iei(maps:without([cancellation_type], Params), <<Tail/binary, (code_param(cancellation_type)):8, Len, Value/binary>>);
+
+encode_iei(#{freeze_p_tmsi := Value} = Params, Tail) ->
+  Len = size(Value),
+  encode_iei(maps:without([freeze_p_tmsi], Params), <<Tail/binary, (code_param(freeze_p_tmsi)):8, Len, Value/binary>>);
+
+encode_iei(#{msisdn := Value0} = Params, Tail) ->
+  Value = encode_imsi(Value0, <<>>),
+  Len = size(Value) + 1,
+  encode_iei(maps:without([msisdn], Params), <<Tail/binary, (code_param(msisdn)):8, Len, 16#06, Value/binary>>);
+
+encode_iei(#{hlr_number := Value0} = Params, Tail) ->
+  Value = encode_imsi(Value0, <<>>),
+  Len = size(Value) + 1,
+  encode_iei(maps:without([hlr_number], Params), <<Tail/binary, (code_param(hlr_number)):8, Len, 16#06, Value/binary>>);
+
+encode_iei(#{pdp_context_id := Value0} = Params, Tail) ->
+  Value = encode_varint(Value0),
+  Len = size(Value),
+  encode_iei(maps:without([pdp_context_id], Params), <<Tail/binary, (code_param(pdp_context_id)):8, Len, Value/binary>>);
+
+encode_iei(#{pdp_charging := Value0} = Params, Tail) ->
+  Value = encode_varint(Value0),
+  Len = size(Value),
+  encode_iei(maps:without([pdp_charging], Params), <<Tail/binary, (code_param(pdp_charging)):8, Len, Value/binary>>);
+
+encode_iei(#{rand := Value} = Params, Tail) ->
+  encode_iei(maps:without([rand], Params), <<Tail/binary, (code_param(rand)):8, 16, Value:16/unit:8>>);
+
+encode_iei(#{auts := Value} = Params, Tail) ->
+  encode_iei(maps:without([auts], Params), <<Tail/binary, (code_param(auts)):8, 14, Value:14/unit:8>>);
 
 encode_iei(#{cndomain := Value0} = Params, Tail) ->
   Value = encode_varint(Value0),
@@ -282,25 +320,52 @@ encode_iei(#{session_state := Value0} = Params, Tail) ->
   Len = size(Value),
   encode_iei(maps:without([session_state], Params), <<Tail/binary, (code_param(session_state)):8, Len, Value/binary>>);
 
-encode_iei(#{msg_ref := Value0} = Params, Tail) ->
+encode_iei(#{ss_info := Value} = Params, Tail) ->
+  Len = size(Value),
+  encode_iei(maps:without([ss_info], Params), <<Tail/binary, (code_param(ss_info)):8, Len, Value/binary>>);
+
+encode_iei(#{sm_rp_mr := Value0} = Params, Tail) ->
   Value = encode_varint(Value0),
   Len = size(Value),
-  encode_iei(maps:without([msg_ref], Params), <<Tail/binary, (code_param(msg_ref)):8, Len, Value/binary>>);
+  encode_iei(maps:without([sm_rp_mr], Params), <<Tail/binary, (code_param(sm_rp_mr)):8, Len, Value/binary>>);
+
+encode_iei(#{sm_rp_da := Value0} = Params, Tail) ->
+  Value = encode_oa_da(Value0),
+  Len = size(Value),
+  encode_iei(maps:without([sm_rp_da], Params), <<Tail/binary, (code_param(sm_rp_da)):8, Len, Value/binary>>);
+
+encode_iei(#{sm_rp_oa := Value0} = Params, Tail) ->
+  Value = encode_oa_da(Value0),
+  Len = size(Value),
+  encode_iei(maps:without([sm_rp_oa], Params), <<Tail/binary, (code_param(sm_rp_oa)):8, Len, Value/binary>>);
+
+encode_iei(#{sm_rp_ui := Value} = Params, Tail) ->
+  Len = size(Value),
+  encode_iei(maps:without([sm_rp_ui], Params), <<Tail/binary, (code_param(sm_rp_ui)):8, Len, Value/binary>>);
 
 encode_iei(#{sm_rp_cause := Value0} = Params, Tail) ->
   Value = encode_varint(Value0),
   Len = size(Value),
   encode_iei(maps:without([sm_rp_cause], Params), <<Tail/binary, (code_param(sm_rp_cause)):8, Len, Value/binary>>);
 
+encode_iei(#{sm_rp_mms := Value0} = Params, Tail) ->
+  Value = encode_varint(Value0),
+  Len = size(Value),
+  encode_iei(maps:without([sm_rp_mms], Params), <<Tail/binary, (code_param(sm_rp_mms)):8, Len, Value/binary>>);
+
 encode_iei(#{alert_reason := Value0} = Params, Tail) ->
   Value = encode_varint(Value0),
   Len = size(Value),
   encode_iei(maps:without([alert_reason], Params), <<Tail/binary, (code_param(alert_reason)):8, Len, Value/binary>>);
 
-encode_iei(#{msisdn := MSISDN0} = Params, Tail) ->
-  MSISDN = encode_imsi(MSISDN0, <<>>),
-  Len = size(MSISDN) + 1,
-  encode_iei(maps:without([msisdn], Params), <<Tail/binary, 16#08, Len, 16#06, MSISDN/binary>>);
+encode_iei(#{imei := Value} = Params, Tail) ->
+  Len = size(Value),
+  encode_iei(maps:without([imei], Params), <<Tail/binary, (code_param(imei)):8, Len, Value/binary>>);
+
+encode_iei(#{imei_check_result := Value0} = Params, Tail) ->
+  Value = encode_varint(Value0),
+  Len = size(Value),
+  encode_iei(maps:without([imei_check_result], Params), <<Tail/binary, (code_param(imei_check_result)):8, Len, Value/binary>>);
 
 encode_iei(_, Tail) -> Tail.
 
@@ -326,9 +391,73 @@ encode_varint(X) when is_integer(X), X >= 0, X =< 16#ffffff -> <<X:24>>;
 
 encode_varint(X) when is_integer(X), X >= 0, X =< 16#ffffffff -> <<X:32>>.
 
+check_auth_tuple(AuthTuple) ->
+  Mandatory = [rand, sres, kc],
+  Fields = [rand, sres, kc, ik, ck, autn, res],
+  (maps:size(maps:with(Mandatory, AuthTuple)) == length(Mandatory)) and (maps:size(maps:without(Fields, AuthTuple)) == 0).
+
+check_pdp_info(AuthTuple) ->
+  Mandatory = [],
+  Fields = [pdp_context_id, pdp_type, access_point_name, quality_of_service, pdp_charging],
+  (maps:size(maps:with(Mandatory, AuthTuple)) == length(Mandatory)) and (maps:size(maps:without(Fields, AuthTuple)) == 0).
+
+encode_auth_tuple(#{rand := Value} = Map, Buffer) ->
+  Len = 16,
+  encode_auth_tuple(maps:without([rand], Map), <<Buffer/binary, (code_param(rand)):8, Len, Value:Len/unit:8>>);
+
+encode_auth_tuple(#{sres := Value} = Map, Buffer) ->
+  Len = 4,
+  encode_auth_tuple(maps:without([sres], Map), <<Buffer/binary, (code_param(sres)):8, Len, Value:Len/unit:8>>);
+
+encode_auth_tuple(#{kc := Value} = Map, Buffer) ->
+  Len = 8,
+  encode_auth_tuple(maps:without([kc], Map), <<Buffer/binary, (code_param(kc)):8, Len, Value:Len/unit:8>>);
+
+encode_auth_tuple(#{ik := Value} = Map, Buffer) ->
+  Len = 16,
+  encode_auth_tuple(maps:without([ik], Map), <<Buffer/binary, (code_param(ik)):8, Len, Value:Len/unit:8>>);
+
+encode_auth_tuple(#{ck := Value} = Map, Buffer) ->
+  Len = 16,
+  encode_auth_tuple(maps:without([ck], Map), <<Buffer/binary, (code_param(ck)):8, Len, Value:Len/unit:8>>);
+
+encode_auth_tuple(#{autn := Value} = Map, Buffer) ->
+  Len = 16,
+  encode_auth_tuple(maps:without([autn], Map), <<Buffer/binary, (code_param(autn)):8, Len, Value:Len/unit:8>>);
+
+encode_auth_tuple(#{res := Value} = Map, Buffer) ->
+  Len = size(Value),
+  encode_auth_tuple(maps:without([res], Map), <<Buffer/binary, (code_param(res)):8, Len, Value/binary>>);
+
+encode_auth_tuple(#{}, Buffer) -> Buffer.
+
+encode_pdp_info(#{pdp_context_id := Value} = Map, Buffer) ->
+  Len = 1,
+  encode_pdp_info(maps:without([pdp_context_id], Map), <<Buffer/binary, (code_param(pdp_context_id)):8, Len, Value:Len/unit:8>>);
+
+encode_pdp_info(#{pdp_type := Value} = Map, Buffer) ->
+  Len = 2,
+  encode_pdp_info(maps:without([pdp_type], Map), <<Buffer/binary, (code_param(pdp_type)):8, Len, Value:Len/unit:8>>);
+
+encode_pdp_info(#{access_point_name := Value} = Map, Buffer) ->
+  Len = size(Value),
+  encode_pdp_info(maps:without([access_point_name], Map), <<Buffer/binary, (code_param(access_point_name)):8, Len, Value/binary>>);
+
+encode_pdp_info(#{quality_of_service := Value} = Map, Buffer) ->
+  Len = size(Value),
+  encode_pdp_info(maps:without([quality_of_service], Map), <<Buffer/binary, (code_param(quality_of_service)):8, Len, Value/binary>>);
+
+encode_pdp_info(#{pdp_charging := Value} = Map, Buffer) ->
+  Len = 2,
+  encode_pdp_info(maps:without([pdp_charging], Map), <<Buffer/binary, (code_param(pdp_charging)):8, Len, Value:Len/unit:8>>);
+
+encode_pdp_info(#{}, Buffer) -> Buffer.
+
 code_param(imsi) -> 16#01;
 code_param(cause) -> 16#02;
+code_param(auth_tuples) -> 16#03;
 code_param(pdp_info_complete) -> 16#04;
+code_param(pdp_info) -> 16#05;
 code_param(cancellation_type) -> 16#06;
 code_param(freeze_p_tmsi) -> 16#07;
 code_param(msisdn) -> 16#08;
