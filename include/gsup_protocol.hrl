@@ -5,4 +5,40 @@
 -define(SESSION_STATE_CONTINUE, 2).
 -define(SESSION_STATE_END, 3).
 
+-define(IMSI_HEX, 16#01).
+-define(CAUSE_HEX, 16#02).
+-define(AUTH_TUPLE_HEX, 16#03).
+-define(PDP_INFO_COMPLETE_HEX, 16#04).
+-define(PDP_INFO_HEX, 16#05).
+-define(CANCELLATION_TYPE_HEX, 16#06).
+-define(FREEZE_P_TMSI_HEX, 16#07).
+-define(MSISDN_HEX, 16#08).
+-define(HLR_NUMBER_HEX, 16#09).
+-define(PDP_CONTEXT_ID_HEX, 16#10).
+-define(PDP_TYPE_HEX, 16#11).
+-define(ACCESS_POINT_NAME_HEX, 16#12).
+-define(QUALITY_OF_SERVICE_HEX, 16#13).
+-define(PDP_CHARGING_HEX, 16#14).
+-define(RAND_HEX, 16#20).
+-define(SRES_HEX, 16#21).
+-define(KC_HEX, 16#22).
+-define(IK_HEX, 16#23).
+-define(CK_HEX, 16#24).
+-define(AUTN_HEX, 16#25).
+-define(AUTS_HEX, 16#26).
+-define(RES_HEX, 16#27).
+-define(CN_DOMAIN_HEX, 16#28).
+-define(SESSION_ID_HEX, 16#30).
+-define(SESSION_STATE_HEX, 16#31).
+-define(SS_INFO_HEX, 16#35).
+-define(SM_RP_MR_HEX, 16#40).
+-define(SM_RP_DA_HEX, 16#41).
+-define(SM_RP_OA_HEX, 16#42).
+-define(SM_RP_UI_HEX, 16#43).
+-define(SM_RP_CAUSE_HEX, 16#44).
+-define(SM_RP_MMS_HEX, 16#45).
+-define(SM_ALERT_REASON_HEX, 16#46).
+-define(IMEI_HEX, 16#50).
+-define(IMEI_CHECK_RESULT_HEX, 16#51).
+
 -endif.
