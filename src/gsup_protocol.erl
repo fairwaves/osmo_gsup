@@ -1,6 +1,7 @@
 -module(gsup_protocol).
 
 -include ("gsup_protocol.hrl").
+-include_lib("eunit/include/eunit.hrl").
 
 -export([decode/1, encode/1, decode_bcd/1]).
 -export_type(['GSUPMessage'/0]).
@@ -52,7 +53,7 @@
     res => binary()
   }] | [],
   pdp_info_complete => binary(),
-  pdp_info => [#{
+  pdp_info_list => [#{
     pdp_context_id => integer(),
     pdp_type => integer(),
     pdp_charging => integer(),
@@ -123,10 +124,10 @@ decode_ie(<<?PDP_INFO_COMPLETE_HEX, 0, Tail/binary>>, Map) ->
   decode_ie(Tail, Map#{pdp_info_complete => <<>>});
 
 decode_ie(<<?PDP_INFO_HEX, Len, PDPInfo0:Len/binary, Tail/binary>>, Map) ->
-  List = maps:get(pdp_info, Map, []),
+  List = maps:get(pdp_info_list, Map, []),
   PDPInfo = decode_pdp_info(PDPInfo0, #{}),
   true = check_pdp_info(PDPInfo),
-  decode_ie(Tail, Map#{pdp_info => List ++ [PDPInfo]});
+  decode_ie(Tail, Map#{pdp_info_list => List ++ [PDPInfo]});
 
 decode_ie(<<?CANCELLATION_TYPE_HEX, Len, CancellationType:Len/unit:8, Tail/binary>>, Map) ->
   decode_ie(Tail, Map#{cancellation_type => CancellationType});
@@ -204,12 +205,11 @@ decode_bcd(<<_:4, B:4, _Tail/binary>>, Buffer) when B < 10 ->
 
 decode_msisdn(<<_X, Data/binary>>, Buffer) -> decode_bcd(Data, Buffer).
 
+decode_oa_da(<<1, _, Addr/binary>>, Buffer) -> {imsi, decode_bcd(Addr, Buffer)};
 
-decode_oa_da(<<1, Addr/binary>>, Buffer) -> {imsi, decode_bcd(Addr, Buffer)};
+decode_oa_da(<<2, _, Addr/binary>>, Buffer) -> {msisdn, decode_bcd(Addr, Buffer)};
 
-decode_oa_da(<<2, Addr/binary>>, Buffer) -> {msisdn, decode_bcd(Addr, Buffer)};
-
-decode_oa_da(<<3, Addr/binary>>, Buffer) -> {smsc, decode_bcd(Addr, Buffer)};
+decode_oa_da(<<3, _, Addr/binary>>, Buffer) -> {smsc, decode_bcd(Addr, Buffer)};
 
 decode_oa_da(<<16#ff, _Addr/binary>>, _Buffer) -> {omit, undefined}.
 
@@ -257,7 +257,7 @@ gsup_messages() ->
   #{
     16#04 => #{message_type => lu_request, mandatory => [imsi], possible => [imsi, cn_domain]},
     16#05 => #{message_type => lu_error, mandatory => [imsi, cause], possible => [imsi, cause]},
-    16#06 => #{message_type => lu_result, mandatory => [imsi], possible => [imsi, msisdn, hlr_number, pdp_info_complete, pdp_info]},
+    16#06 => #{message_type => lu_result, mandatory => [imsi], possible => [imsi, msisdn, hlr_number, pdp_info_complete, pdp_info_list]},
     16#08 => #{message_type => sai_request, mandatory => [imsi], possible => [imsi, cn_domain, auts, rand]},
     16#09 => #{message_type => sai_error, mandatory => [imsi, cause], possible => [imsi, cause]},
     16#0a => #{message_type => sai_result, mandatory => [imsi], possible => [imsi, auth_tuples]},
@@ -265,7 +265,7 @@ gsup_messages() ->
     16#0c => #{message_type => purge_ms_request, mandatory => [imsi, hlr_number], possible => [imsi, cn_domain, hlr_number]},
     16#0d => #{message_type => purge_ms_error, mandatory => [imsi, cause], possible => [imsi, cause]},
     16#0e => #{message_type => purge_ms_result, mandatory => [imsi, freeze_p_tmsi], possible => [imsi, freeze_p_tmsi]},
-    16#10 => #{message_type => isd_request, mandatory => [imsi, pdp_info_complete], possible => [imsi, cn_domain, msisdn, hlr_number, pdp_info_complete, pdp_info, pdp_charging]},
+    16#10 => #{message_type => isd_request, mandatory => [imsi, pdp_info_complete], possible => [imsi, cn_domain, msisdn, hlr_number, pdp_info_complete, pdp_info_list, pdp_charging]},
     16#11 => #{message_type => isd_error, mandatory => [imsi, cause], possible => [imsi, cause]},
     16#12 => #{message_type => isd_result, mandatory => [imsi], possible => [imsi]},
     16#14 => #{message_type => dsd_request, mandatory => [imsi], possible => [imsi, cn_domain, pdp_context_id]},
@@ -319,7 +319,7 @@ encode(MsgNum, GSUPMessage) when is_integer(MsgNum), is_map(GSUPMessage), MsgNum
           Len = size(Tail) + 2,
           {ok, <<Len:16, 16#ee, 16#05, MsgNum, Tail/binary>>};
         {false, _} -> {error, {ie_missing, Mandatory -- maps:keys(GSUPMessage)}};
-        {_, false} -> {error, {ie_not_expected, maps:keys(GSUPMessage) -- Possible}}
+        {_, false} -> {error, {ie_not_expected, maps:keys(GSUPMessage) -- Possible ++ [message_type]}}
       end;
     _ -> 
       {error, unknown_message}
@@ -335,26 +335,28 @@ encode_ie(#{cause := Value0} = GSUPMessage, Tail) ->
   Len = size(Value),
   encode_ie(maps:without([cause], GSUPMessage), <<Tail/binary, ?CAUSE_HEX, Len, Value/binary>>);
 
-encode_ie(#{auth_tuples := []} = GSUPMessage, Tail) ->
-  encode_ie(maps:without([auth_tuples], GSUPMessage), Tail);
-
-encode_ie(#{auth_tuples := [Tuple | Tuples]} = GSUPMessage, Tail) ->
-  true = check_auth_tuple(Tuple),
-  Value = encode_auth_tuple(Tuple, <<>>),
-  Len = size(Value),
-  encode_ie(GSUPMessage#{auth_tuples => Tuples}, <<Tail/binary, ?AUTH_TUPLE_HEX, Len, Value/binary>>);
+encode_ie(#{auth_tuples := Tuples0} = GSUPMessage, Tail) ->
+  Tuples = <<
+    begin
+      true = check_auth_tuple(Tuple),
+      Value = encode_auth_tuple(Tuple, <<>>),
+      Len = size(Value),
+      <<?AUTH_TUPLE_HEX, Len, Value/binary>>
+    end || Tuple <- Tuples0>>,
+  encode_ie(maps:without([auth_tuples], GSUPMessage), <<Tail/binary, Tuples/binary>>);
 
 encode_ie(#{pdp_info_complete := _} = GSUPMessage, Tail) ->
   encode_ie(maps:without([pdp_info_complete], GSUPMessage), <<Tail/binary, ?PDP_INFO_COMPLETE_HEX, 0>>);
 
-encode_ie(#{pdp_info := []} = GSUPMessage, Tail) ->
-  encode_ie(maps:without([pdp_info], GSUPMessage), Tail);
-
-encode_ie(#{pdp_info := [PDPInfo | PDPInfoList]} = GSUPMessage, Tail) -> %% PDPInfo
-  true = check_pdp_info(PDPInfo),
-  Value = encode_pdp_info(PDPInfo, <<>>),
-  Len = size(Value),
-  encode_ie(GSUPMessage#{pdp_info => PDPInfoList}, <<Tail/binary, ?PDP_INFO_HEX, Len, Value/binary>>);
+encode_ie(#{pdp_info_list := PDPInfoList0} = GSUPMessage, Tail) -> %% PDPInfo
+  PDPInfoList = <<
+    begin
+      true = check_pdp_info(PDPInfo),
+      Value = encode_pdp_info(PDPInfo, <<>>),
+      Len = size(Value),
+      <<?PDP_INFO_HEX, Len, Value/binary>>
+    end || PDPInfo <- PDPInfoList0>>,
+  encode_ie(maps:without([pdp_info_list], GSUPMessage), <<Tail/binary, PDPInfoList/binary>>);
 
 encode_ie(#{cancellation_type := Value0} = GSUPMessage, Tail) ->
   Value = encode_varint(Value0),
@@ -468,7 +470,7 @@ encode_oa_da({imsi, Addr}) -> <<16#01, (encode_bcd(Addr, <<>>))/binary>>;
 
 encode_oa_da({msisdn, Addr}) -> <<16#02, 16#06, (encode_bcd(Addr, <<>>))/binary>>;
 
-encode_oa_da({smsc, Addr}) -> <<16#03, 16#06, (encode_bcd(Addr, <<>>))/binary>>;
+encode_oa_da({smsc, Addr}) -> <<16#03, 16#00, (encode_bcd(Addr, <<>>))/binary>>;
 
 encode_oa_da({omit, _}) -> <<16#ff>>.
 
@@ -485,10 +487,10 @@ check_auth_tuple(AuthTuple) ->
   Possible = [rand, sres, kc, ik, ck, autn, res],
   (maps:size(maps:with(Mandatory, AuthTuple)) == length(Mandatory)) and (maps:size(maps:without(Possible, AuthTuple)) == 0).
 
-check_pdp_info(AuthTuple) ->
+check_pdp_info(PDPInfo) ->
   Mandatory = [],
   Possible = [pdp_context_id, pdp_type, access_point_name, quality_of_service, pdp_charging],
-  (maps:size(maps:with(Mandatory, AuthTuple)) == length(Mandatory)) and (maps:size(maps:without(Possible, AuthTuple)) == 0).
+  (maps:size(maps:with(Mandatory, PDPInfo)) == length(Mandatory)) and (maps:size(maps:without(Possible, PDPInfo)) == 0).
 
 encode_auth_tuple(#{rand := Value} = Map, Buffer) ->
   Len = 16,
@@ -541,3 +543,60 @@ encode_pdp_info(#{pdp_charging := Value} = Map, Buffer) ->
   encode_pdp_info(maps:without([pdp_charging], Map), <<Buffer/binary, ?PDP_CHARGING_HEX, Len, Value:Len/unit:8>>);
 
 encode_pdp_info(#{}, Buffer) -> Buffer.
+
+-ifdef (TEST).
+
+-define(BINARY_ISD_REQUEST_BAD, <<0,33,238,5, 16,1,8,98,66,130,119,116,88,81,242,5,7,16,1,1,18,2,1,42,8,7,6,148,97,49,100,96,33,40,1,1>>).
+-define(BINARY_ISD_REQUEST, <<0,35,238,5, 16,1,8,98,66,130,119,116,88,81,242,4,0,5,7,16,1,1,18,2,1,42,8,7,6,148,97,49,100,96,33,40,1,1>>).
+-define(MAP_ISD_REQUEST, #{cn_domain => 1,imsi => <<"262428774785152">>,message_type => isd_request,msisdn => <<"491613460612">>,pdp_info_list => [#{access_point_name => <<1,42>>,pdp_context_id => 1}], pdp_info_complete => <<>>}).
+
+-define(BINARY_MO_FORWARD_REQUEST, <<0,44,238,5, 36,1,8,98,66,2,0,0,0,128,248,64,1,66,65,5,3,0,137,103,245,66,8,2,6,148,33,3,0,0,136,67,10,5,35,5,0,33,67,245,0,0,0>>).
+-define(MAP_MO_FORWARD_REQUEST, #{imsi => <<"262420000000088">>,message_type => mo_forward_request,sm_rp_da => {smsc,<<"98765">>},sm_rp_mr => 66,sm_rp_oa => {msisdn,<<"491230000088">>},sm_rp_ui => <<5,35,5,0,33,67,245,0,0,0>>}).
+
+-define(BINARY_SS_REQUEST, <<0,44,238,5, 32,1,8,98,66,2,0,0,0,64,246,48,4,32,0,0,1,49,1,1,53,21,161,19,2,1,5,2,1,59,48,11,4,1,15,4,6,170,81,12,6,27,1>>).
+-define(MAP_SS_REQUEST, #{imsi => <<"262420000000046">>,message_type => ss_request,session_id => 536870913,session_state => 1,ss_info => <<161,19,2,1,5,2,1,59,48,11,4,1,15,4,6,170,81,12,6,27,1>>}).
+
+-define(BINARY_SAI_RESULT,<<0,192,238,5, 10,1,8,98,66,2,80,118,115,7,240,3,34,32,16,139,144,41,228,197,232,161,115,52,229,66,150,129,111,14,163,33,4,154,221,96,95,34,8,214,95,14,186,82,93,186,131,3,34,32,16,98,45,225,235,92,202,105,88,14,17,66,100,38,60,70,60,33,4,125,216,104,213,34,8,92,188,236,132,7,137,137,207,3,34,32,16,247,184,92,22,164,154,219,122,73,61,217,228,64,22,207,229,33,4,12,236,133,61,34,8,2,247,249,165,41,173,134,71,3,34,32,16,115,152,209,15,231,72,227,254,143,199,185,130,91,206,171,41,33,4,236,133,225,34,34,8,67,180,13,145,7,174,211,12,3,34,32,16,251,173,219,197,60,132,202,24,53,87,236,186,86,175,231,59,33,4,61,86,38,102,34,8,224,104,249,198,53,145,182,54>>).
+-define(MAP_SAI_RESULT, #{auth_tuples => [
+    #{kc => <<15447081440312670851:8/unit:8>>,rand => <<185511231865796904634040334886313594531:16/unit:8>>,sres => <<2598199391:4/unit:8>>},
+    #{kc => <<6682475998917265871:8/unit:8>>,rand => <<130502579135052156657755432460855559740:16/unit:8>>,sres => <<2111334613:4/unit:8>>},
+    #{kc => <<213913995087545927:8/unit:8>>,rand => <<329276565356490492799345768940241866725:16/unit:8>>,sres => <<216827197:4/unit:8>>},
+    #{kc => <<4878539212899406604:8/unit:8>>,rand => <<153654688921371376697326139997978274601:16/unit:8>>,sres => <<3968196898:4/unit:8>>},
+    #{kc => <<16170449091771348534:8/unit:8>>,rand => <<334538951772921257466553732075468351291:16/unit:8>>,sres => <<1029056102:4/unit:8>>}
+  ],imsi => <<"262420056737700">>,message_type => sai_result}).
+
+isd_request_test() ->
+  {ok, {Map, <<>>}} = gsup_protocol:decode(?BINARY_ISD_REQUEST),
+  ?assertEqual(?MAP_ISD_REQUEST, Map),
+  {ok, Bin} = gsup_protocol:encode(Map),
+  ?assertEqual(?BINARY_ISD_REQUEST, Bin).
+
+mo_forward_request_test() ->
+  {ok, {Map, <<>>}} = gsup_protocol:decode(?BINARY_MO_FORWARD_REQUEST),
+  ?assertEqual(?MAP_MO_FORWARD_REQUEST, Map),
+  {ok, Bin} = gsup_protocol:encode(Map),
+  ?assertEqual(?BINARY_MO_FORWARD_REQUEST, Bin).
+
+ss_request_test() ->
+  {ok, {Map, <<>>}} = gsup_protocol:decode(?BINARY_SS_REQUEST),
+  ?assertEqual(?MAP_SS_REQUEST, Map),
+  {ok, Bin} = gsup_protocol:encode(Map),
+  ?assertEqual(?BINARY_SS_REQUEST, Bin).
+
+sai_result_test() ->
+  {ok, {Map, <<>>}} = gsup_protocol:decode(?BINARY_SAI_RESULT),
+  ?assertEqual(?MAP_SAI_RESULT, Map),
+  {ok, Bin} = gsup_protocol:encode(Map),
+  ?assertEqual(?BINARY_SAI_RESULT, Bin).
+
+missing_params_test() ->
+  Res1 = gsup_protocol:decode(?BINARY_ISD_REQUEST_BAD),
+  ?assertEqual({error,{ie_missing,[pdp_info_complete]}}, Res1),
+  Res2 = gsup_protocol:encode(#{message_type => mo_forward_request}),
+  ?assertEqual({error,{ie_missing,[sm_rp_mr,imsi,sm_rp_da,sm_rp_oa,sm_rp_ui]}}, Res2).
+
+excess_params_test() ->
+  Res1 = gsup_protocol:encode(#{message_type => lu_error,imsi => <<"1234">>,cause => 1,pdp_info_complete => <<>>}),
+  ?assertEqual({error,{ie_not_expected,[pdp_info_complete]}}, Res1).
+
+-endif.
