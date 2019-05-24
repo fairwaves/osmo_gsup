@@ -2,8 +2,88 @@
 
 -include ("gsup_protocol.hrl").
 
--export ([decode/1, encode/1, decode_bcd/1]).
+-export([decode/1, encode/1, decode_bcd/1]).
+-export_type(['GSUPMessage'/0]).
 
+-type 'GSUPMessage'() :: #{
+  message_type := lu_request
+                | lu_error
+                | lu_result
+                | sai_request
+                | sai_error
+                | sai_result
+                | af_report
+                | purge_ms_request
+                | purge_ms_error
+                | purge_ms_result
+                | isd_request
+                | isd_error
+                | isd_result
+                | dsd_request
+                | dsd_error
+                | dsd_result
+                | lc_request
+                | lc_error
+                | lc_result
+                | ss_request
+                | ss_error
+                | ss_result
+                | mo_forward_request
+                | mo_forward_error
+                | mo_forward_result
+                | mt_forward_request
+                | mt_forward_error
+                | mt_forward_result
+                | ready_for_sm_request
+                | ready_for_sm_error
+                | ready_for_sm_result
+                | ci_request
+                | ci_error
+                | ci_result,
+  imsi := binary(),
+  cause => integer(),
+  auth_tuples => [#{
+    rand := binary(),
+    sres := binary(),
+    kc := binary(),
+    ik => binary(),
+    ck => binary(),
+    autn => binary(),
+    res => binary()
+  }] | [],
+  pdp_info_complete => binary(),
+  pdp_info => [#{
+    pdp_context_id => integer(),
+    pdp_type => integer(),
+    pdp_charging => integer(),
+    access_point_name => binary(),
+    quality_of_service => binary()
+  }],
+  cancellation_type => integer(),
+  freeze_p_tmsi => binary(),  
+  msisdn => binary(),
+  hlr_number => binary(),
+  pdp_context_id => integer(),
+  pdp_charging => integer(),
+  rand => binary(),
+  auts => binary(),
+  cn_domain => integer(),
+  session_id => integer(),
+  session_state => integer(),
+  ss_info => binary(),
+  sm_rp_mr => integer(),
+  sm_rp_da => {imsi | msisdn | smsc, binary()} | {omit, undefined},
+  sm_rp_oa => {imsi | msisdn | smsc, binary()} | {omit, undefined},
+  sm_rp_ui => binary(),
+  sm_rp_cause => integer(),
+  sm_rp_mms => integer(),
+  sm_alert_reason => integer(),
+  imei => binary(),
+  imei_check_result => integer()
+}.
+
+
+-spec decode(binary()) -> {ok, {'GSUPMessage'(), binary()}} | {more_data, binary()} | {error, term()}.
 decode(<<PSize:16, 16#ee, Packet:PSize/binary, Rest/binary>>) ->
   <<16#05, MsgNum, Tail/binary>> = Packet,
   Messages = gsup_messages(),
@@ -111,6 +191,7 @@ decode_ie(<<?IMEI_HEX, Len, IMEI:Len/binary, Tail/binary>>, Map) ->
 decode_ie(<<?IMEI_CHECK_RESULT_HEX, Len, IMEIResult:Len/unit:8, Tail/binary>>, Map) ->
   decode_ie(Tail, Map#{imei_check_result => IMEIResult}).
 
+-spec decode_bcd(binary()) -> binary().
 decode_bcd(BCD) -> decode_bcd(BCD, <<>>).
 
 decode_bcd(<<>>, Buffer) -> Buffer;
@@ -210,6 +291,7 @@ gsup_messages() ->
     16#32 => #{message_type => ci_result, mandatory => [imsi, imei_check_result], possible => [imsi, imei_check_result]}
   }.
 
+-spec encode('GSUPMessage'()) -> {ok, binary()} | {error, term()}.
 encode(GSUPMessage = #{message_type := MsgAtom}) when is_atom(MsgAtom) ->
   Table = #{
     lu_request => 16#04, lu_error => 16#05, lu_result => 16#06,
