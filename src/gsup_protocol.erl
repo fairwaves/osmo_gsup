@@ -4,10 +4,9 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -export([decode/1, encode/1, decode_bcd/1]).
--export_type(['GSUPMessage'/0]).
+-export_type(['GSUPMessage'/0, 'GSUPMessageType'/0]).
 
--type 'GSUPMessage'() :: #{
-  message_type := lu_request
+-type 'GSUPMessageType'() :: lu_request
                 | lu_error
                 | lu_result
                 | sai_request
@@ -40,7 +39,10 @@
                 | ready_for_sm_result
                 | ci_request
                 | ci_error
-                | ci_result,
+                | ci_result.
+
+-type 'GSUPMessage'() :: #{
+  message_type := 'GSUPMessageType'(),
   imsi := binary(),
   cause => integer(),
   auth_tuples => [#{
@@ -592,8 +594,8 @@ sai_result_test() ->
 missing_params_test() ->
   Res1 = gsup_protocol:decode(?BINARY_ISD_REQUEST_BAD),
   ?assertEqual({error,{ie_missing,[pdp_info_complete]}}, Res1),
-  Res2 = gsup_protocol:encode(#{message_type => mo_forward_request}),
-  ?assertEqual({error,{ie_missing,[sm_rp_mr,imsi,sm_rp_da,sm_rp_oa,sm_rp_ui]}}, Res2).
+  Res2 = gsup_protocol:encode(#{message_type => mo_forward_request, imsi => <<"123456">>}),
+  ?assertEqual({error,{ie_missing,[sm_rp_mr,sm_rp_da,sm_rp_oa,sm_rp_ui]}}, Res2).
 
 excess_params_test() ->
   Res1 = gsup_protocol:encode(#{message_type => lu_error,imsi => <<"1234">>,cause => 1,pdp_info_complete => <<>>}),
