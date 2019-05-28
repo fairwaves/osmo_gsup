@@ -1,97 +1,15 @@
 -module(gsup_protocol).
 
 -include ("gsup_protocol.hrl").
--include_lib("eunit/include/eunit.hrl").
 
 -export([decode/1, encode/1, decode_bcd/1]).
 -export_type(['GSUPMessage'/0, 'GSUPMessageType'/0]).
 
--type 'GSUPMessageType'() :: lu_request
-                | lu_error
-                | lu_result
-                | sai_request
-                | sai_error
-                | sai_result
-                | af_report
-                | purge_ms_request
-                | purge_ms_error
-                | purge_ms_result
-                | isd_request
-                | isd_error
-                | isd_result
-                | dsd_request
-                | dsd_error
-                | dsd_result
-                | lc_request
-                | lc_error
-                | lc_result
-                | ss_request
-                | ss_error
-                | ss_result
-                | mo_forward_request
-                | mo_forward_error
-                | mo_forward_result
-                | mt_forward_request
-                | mt_forward_error
-                | mt_forward_result
-                | ready_for_sm_request
-                | ready_for_sm_error
-                | ready_for_sm_result
-                | ci_request
-                | ci_error
-                | ci_result.
-
--type 'GSUPMessage'() :: #{
-  message_type := 'GSUPMessageType'(),
-  imsi := binary(),
-  cause => integer(),
-  auth_tuples => [#{
-    rand := binary(),
-    sres := binary(),
-    kc := binary(),
-    ik => binary(),
-    ck => binary(),
-    autn => binary(),
-    res => binary()
-  }] | [],
-  pdp_info_complete => binary(),
-  pdp_info_list => [#{
-    pdp_context_id => integer(),
-    pdp_type => integer(),
-    pdp_charging => integer(),
-    access_point_name => binary(),
-    quality_of_service => binary()
-  }],
-  cancellation_type => integer(),
-  freeze_p_tmsi => binary(),  
-  msisdn => binary(),
-  hlr_number => binary(),
-  pdp_context_id => integer(),
-  pdp_charging => integer(),
-  rand => binary(),
-  auts => binary(),
-  cn_domain => integer(),
-  session_id => integer(),
-  session_state => integer(),
-  ss_info => binary(),
-  sm_rp_mr => integer(),
-  sm_rp_da => {imsi | msisdn | smsc, binary()} | {omit, undefined},
-  sm_rp_oa => {imsi | msisdn | smsc, binary()} | {omit, undefined},
-  sm_rp_ui => binary(),
-  sm_rp_cause => integer(),
-  sm_rp_mms => integer(),
-  sm_alert_reason => integer(),
-  imei => binary(),
-  imei_check_result => integer()
-}.
-
-
 -spec decode(binary()) -> {ok, {'GSUPMessage'(), binary()}} | {more_data, binary()} | {error, term()}.
-decode(<<PSize:16, 16#ee, Packet:PSize/binary, Rest/binary>>) ->
-  <<16#05, MsgNum, Tail/binary>> = Packet,
-  Messages = gsup_messages(),
+decode(<<PSize:16, ?OSMO_EXT, Packet:PSize/binary, Rest/binary>>) ->
+  <<?GSUP_OSMO_EXT, MsgNum, Tail/binary>> = Packet,
   GSUPMessage = decode_ie(Tail, #{}),
-  case Messages of
+  case ?GSUP_MESSAGES() of
     #{MsgNum := #{message_type := Msg, mandatory := Mandatory, possible := Possible}} ->
       case {maps:size(maps:with(Mandatory, GSUPMessage)) == length(Mandatory), maps:size(maps:without(Possible ++ [message_type], GSUPMessage)) == 0} of
         {true, true} -> {ok, {GSUPMessage#{message_type => Msg}, Rest}};
@@ -102,7 +20,7 @@ decode(<<PSize:16, 16#ee, Packet:PSize/binary, Rest/binary>>) ->
       {error, {unknown_message, MsgNum, GSUPMessage}}
   end;
 
-decode(<<_PSize:16, X, _/binary>> = Rest) when X /= 16#ee ->
+decode(<<_PSize:16, X, _/binary>> = Rest) when X /= ?OSMO_EXT ->
   {error, {bad_packet, Rest}};
 
 decode(Rest) ->
@@ -255,71 +173,26 @@ decode_pdp_info(<<?PDP_CHARGING_HEX, Len, PDPCharging:Len/unit:8, Tail/binary>>,
 
 decode_pdp_info(<<>>, Map) -> Map.
 
-gsup_messages() ->
-  #{
-    16#04 => #{message_type => lu_request, mandatory => [imsi], possible => [imsi, cn_domain]},
-    16#05 => #{message_type => lu_error, mandatory => [imsi, cause], possible => [imsi, cause]},
-    16#06 => #{message_type => lu_result, mandatory => [imsi], possible => [imsi, msisdn, hlr_number, pdp_info_complete, pdp_info_list]},
-    16#08 => #{message_type => sai_request, mandatory => [imsi], possible => [imsi, cn_domain, auts, rand]},
-    16#09 => #{message_type => sai_error, mandatory => [imsi, cause], possible => [imsi, cause]},
-    16#0a => #{message_type => sai_result, mandatory => [imsi], possible => [imsi, auth_tuples]},
-    16#0b => #{message_type => af_report, mandatory => [imsi], possible => [imsi, cn_domain]},
-    16#0c => #{message_type => purge_ms_request, mandatory => [imsi, hlr_number], possible => [imsi, cn_domain, hlr_number]},
-    16#0d => #{message_type => purge_ms_error, mandatory => [imsi, cause], possible => [imsi, cause]},
-    16#0e => #{message_type => purge_ms_result, mandatory => [imsi, freeze_p_tmsi], possible => [imsi, freeze_p_tmsi]},
-    16#10 => #{message_type => isd_request, mandatory => [imsi, pdp_info_complete], possible => [imsi, cn_domain, msisdn, hlr_number, pdp_info_complete, pdp_info_list, pdp_charging]},
-    16#11 => #{message_type => isd_error, mandatory => [imsi, cause], possible => [imsi, cause]},
-    16#12 => #{message_type => isd_result, mandatory => [imsi], possible => [imsi]},
-    16#14 => #{message_type => dsd_request, mandatory => [imsi], possible => [imsi, cn_domain, pdp_context_id]},
-    16#15 => #{message_type => dsd_error, mandatory => [imsi, cause], possible => [imsi, cause]},
-    16#16 => #{message_type => dsd_result, mandatory => [imsi], possible => [imsi]},
-    16#1c => #{message_type => lc_request, mandatory => [imsi], possible => [imsi, cn_domain, cancellation_type]},
-    16#1d => #{message_type => lc_error, mandatory => [imsi, cause], possible => [imsi, cn_domain]},
-    16#1e => #{message_type => lc_result, mandatory => [imsi], possible => [imsi, cn_domain]},
-    16#20 => #{message_type => ss_request, mandatory => [session_id, session_state, imsi], possible => [imsi, session_id, session_state, ss_info]},
-    16#21 => #{message_type => ss_error, mandatory => [session_id, session_state, imsi, cause], possible => [imsi, cause, session_id, session_state]},
-    16#22 => #{message_type => ss_result, mandatory => [session_id, session_state, imsi], possible => [imsi, session_id, session_state, ss_info]},
-    16#24 => #{message_type => mo_forward_request, mandatory => [sm_rp_mr, imsi, sm_rp_da, sm_rp_oa, sm_rp_ui], possible => [sm_rp_mr, imsi, sm_rp_da, sm_rp_oa, sm_rp_ui]},
-    16#25 => #{message_type => mo_forward_error, mandatory => [sm_rp_mr, imsi, sm_rp_cause], possible => [sm_rp_mr, imsi, sm_rp_cause, sm_rp_ui]},
-    16#26 => #{message_type => mo_forward_result, mandatory => [sm_rp_mr, imsi], possible => [sm_rp_mr, imsi]},
-    16#28 => #{message_type => mt_forward_request, mandatory => [sm_rp_mr, imsi, sm_rp_da, sm_rp_oa, sm_rp_ui], possible => [sm_rp_mr, imsi, sm_rp_da, sm_rp_oa, sm_rp_ui, sm_rp_mms]},
-    16#29 => #{message_type => mt_forward_error, mandatory => [sm_rp_mr, imsi, sm_rp_cause], possible => [sm_rp_mr, imsi, sm_rp_cause, sm_rp_ui]},
-    16#2a => #{message_type => mt_forward_result, mandatory => [sm_rp_mr, imsi], possible => [sm_rp_mr, imsi]},
-    16#2c => #{message_type => ready_for_sm_request, mandatory => [imsi, sm_rp_mr, sm_alert_reason], possible => [imsi, sm_rp_mr, sm_alert_reason]},
-    16#2d => #{message_type => ready_for_sm_error, mandatory => [imsi, sm_rp_mr, sm_sm_rp_cause], possible => [imsi, sm_rp_mr, sm_sm_rp_cause, sm_rp_ui]},
-    16#2e => #{message_type => ready_for_sm_result, mandatory => [imsi, sm_rp_mr], possible => [imsi, sm_rp_mr]},
-    16#30 => #{message_type => ci_request, mandatory => [imsi, imei], possible => [imsi, imei]},
-    16#31 => #{message_type => ci_error, mandatory => [imsi, cause], possible => [imsi, cause]},
-    16#32 => #{message_type => ci_result, mandatory => [imsi, imei_check_result], possible => [imsi, imei_check_result]}
-  }.
-
 -spec encode('GSUPMessage'()) -> {ok, binary()} | {error, term()}.
 encode(GSUPMessage = #{message_type := MsgAtom}) when is_atom(MsgAtom) ->
-  Table = #{
-    lu_request => 16#04, lu_error => 16#05, lu_result => 16#06,
-    sai_request => 16#08, sai_error => 16#09, sai_result => 16#0a,
-    purge_ms_request => 16#0c, purge_ms_error => 16#0d, purge_ms_result => 16#0e,
-    af_report => 16#0b,
-    isd_request => 16#10, isd_error => 16#11, isd_result => 16#12,
-    dsd_request => 16#14, dsd_error => 16#15, dsd_result => 16#16,
-    lc_request => 16#1c, lc_error => 16#1d, lc_result => 16#1e,
-    ss_request => 16#20, ss_error => 16#21, ss_result => 16#22,
-    mo_forward_request => 16#24, mo_forward_error => 16#25, mo_forward_result => 16#26,
-    mt_forward_request => 16#28, mt_forward_error => 16#29, mt_forward_result => 16#2a,
-    ready_for_sm_request => 16#2c, ready_for_sm_error => 16#2d, ready_for_sm_result => 16#2e,
-    ci_request => 16#30, ci_error => 16#31, ci_result => 16#32
-  },
-  #{MsgAtom := MsgNum} = Table,
+  F = fun
+    (MsgNum_, #{message_type := MsgAtom_}, undefined) when MsgAtom_ == MsgAtom -> MsgNum_;
+    (_, _, Acc) -> Acc
+  end,
+  case maps:fold(F, undefined, ?GSUP_MESSAGES()) of
+    undefined -> error({unknown_message, MsgAtom}), MsgNum = undefined;
+    MsgNum when is_integer(MsgNum) -> ok
+  end,
   encode(MsgNum, GSUPMessage).
 
 encode(MsgNum, GSUPMessage) when is_integer(MsgNum), is_map(GSUPMessage), MsgNum >=0, MsgNum =< 255 ->
-  case gsup_messages() of
+  case ?GSUP_MESSAGES() of
     #{MsgNum := #{message_type := _Msg, mandatory := Mandatory, possible := Possible}} ->
       case {maps:size(maps:with(Mandatory, GSUPMessage)) == length(Mandatory), maps:size(maps:without(Possible ++ [message_type], GSUPMessage)) == 0} of
         {true, true} -> 
           Tail = encode_ie(GSUPMessage, <<>>),
           Len = size(Tail) + 2,
-          {ok, <<Len:16, 16#ee, 16#05, MsgNum, Tail/binary>>};
+          {ok, <<Len:16, ?OSMO_EXT, ?GSUP_OSMO_EXT, MsgNum, Tail/binary>>};
         {false, _} -> {error, {ie_missing, Mandatory -- maps:keys(GSUPMessage)}};
         {_, false} -> {error, {ie_not_expected, maps:keys(GSUPMessage) -- Possible ++ [message_type]}}
       end;
@@ -545,60 +418,3 @@ encode_pdp_info(#{pdp_charging := Value} = Map, Buffer) ->
   encode_pdp_info(maps:without([pdp_charging], Map), <<Buffer/binary, ?PDP_CHARGING_HEX, Len, Value:Len/unit:8>>);
 
 encode_pdp_info(#{}, Buffer) -> Buffer.
-
--ifdef (TEST).
-
--define(BINARY_ISD_REQUEST_BAD, <<0,33,238,5, 16,1,8,98,66,130,119,116,88,81,242,5,7,16,1,1,18,2,1,42,8,7,6,148,97,49,100,96,33,40,1,1>>).
--define(BINARY_ISD_REQUEST, <<0,35,238,5, 16,1,8,98,66,130,119,116,88,81,242,4,0,5,7,16,1,1,18,2,1,42,8,7,6,148,97,49,100,96,33,40,1,1>>).
--define(MAP_ISD_REQUEST, #{cn_domain => 1,imsi => <<"262428774785152">>,message_type => isd_request,msisdn => <<"491613460612">>,pdp_info_list => [#{access_point_name => <<1,42>>,pdp_context_id => 1}], pdp_info_complete => <<>>}).
-
--define(BINARY_MO_FORWARD_REQUEST, <<0,44,238,5, 36,1,8,98,66,2,0,0,0,128,248,64,1,66,65,5,3,0,137,103,245,66,8,2,6,148,33,3,0,0,136,67,10,5,35,5,0,33,67,245,0,0,0>>).
--define(MAP_MO_FORWARD_REQUEST, #{imsi => <<"262420000000088">>,message_type => mo_forward_request,sm_rp_da => {smsc,<<"98765">>},sm_rp_mr => 66,sm_rp_oa => {msisdn,<<"491230000088">>},sm_rp_ui => <<5,35,5,0,33,67,245,0,0,0>>}).
-
--define(BINARY_SS_REQUEST, <<0,44,238,5, 32,1,8,98,66,2,0,0,0,64,246,48,4,32,0,0,1,49,1,1,53,21,161,19,2,1,5,2,1,59,48,11,4,1,15,4,6,170,81,12,6,27,1>>).
--define(MAP_SS_REQUEST, #{imsi => <<"262420000000046">>,message_type => ss_request,session_id => 536870913,session_state => 1,ss_info => <<161,19,2,1,5,2,1,59,48,11,4,1,15,4,6,170,81,12,6,27,1>>}).
-
--define(BINARY_SAI_RESULT,<<0,192,238,5, 10,1,8,98,66,2,80,118,115,7,240,3,34,32,16,139,144,41,228,197,232,161,115,52,229,66,150,129,111,14,163,33,4,154,221,96,95,34,8,214,95,14,186,82,93,186,131,3,34,32,16,98,45,225,235,92,202,105,88,14,17,66,100,38,60,70,60,33,4,125,216,104,213,34,8,92,188,236,132,7,137,137,207,3,34,32,16,247,184,92,22,164,154,219,122,73,61,217,228,64,22,207,229,33,4,12,236,133,61,34,8,2,247,249,165,41,173,134,71,3,34,32,16,115,152,209,15,231,72,227,254,143,199,185,130,91,206,171,41,33,4,236,133,225,34,34,8,67,180,13,145,7,174,211,12,3,34,32,16,251,173,219,197,60,132,202,24,53,87,236,186,86,175,231,59,33,4,61,86,38,102,34,8,224,104,249,198,53,145,182,54>>).
--define(MAP_SAI_RESULT, #{auth_tuples => [
-    #{kc => <<15447081440312670851:8/unit:8>>,rand => <<185511231865796904634040334886313594531:16/unit:8>>,sres => <<2598199391:4/unit:8>>},
-    #{kc => <<6682475998917265871:8/unit:8>>,rand => <<130502579135052156657755432460855559740:16/unit:8>>,sres => <<2111334613:4/unit:8>>},
-    #{kc => <<213913995087545927:8/unit:8>>,rand => <<329276565356490492799345768940241866725:16/unit:8>>,sres => <<216827197:4/unit:8>>},
-    #{kc => <<4878539212899406604:8/unit:8>>,rand => <<153654688921371376697326139997978274601:16/unit:8>>,sres => <<3968196898:4/unit:8>>},
-    #{kc => <<16170449091771348534:8/unit:8>>,rand => <<334538951772921257466553732075468351291:16/unit:8>>,sres => <<1029056102:4/unit:8>>}
-  ],imsi => <<"262420056737700">>,message_type => sai_result}).
-
-isd_request_test() ->
-  {ok, {Map, <<>>}} = gsup_protocol:decode(?BINARY_ISD_REQUEST),
-  ?assertEqual(?MAP_ISD_REQUEST, Map),
-  {ok, Bin} = gsup_protocol:encode(Map),
-  ?assertEqual(?BINARY_ISD_REQUEST, Bin).
-
-mo_forward_request_test() ->
-  {ok, {Map, <<>>}} = gsup_protocol:decode(?BINARY_MO_FORWARD_REQUEST),
-  ?assertEqual(?MAP_MO_FORWARD_REQUEST, Map),
-  {ok, Bin} = gsup_protocol:encode(Map),
-  ?assertEqual(?BINARY_MO_FORWARD_REQUEST, Bin).
-
-ss_request_test() ->
-  {ok, {Map, <<>>}} = gsup_protocol:decode(?BINARY_SS_REQUEST),
-  ?assertEqual(?MAP_SS_REQUEST, Map),
-  {ok, Bin} = gsup_protocol:encode(Map),
-  ?assertEqual(?BINARY_SS_REQUEST, Bin).
-
-sai_result_test() ->
-  {ok, {Map, <<>>}} = gsup_protocol:decode(?BINARY_SAI_RESULT),
-  ?assertEqual(?MAP_SAI_RESULT, Map),
-  {ok, Bin} = gsup_protocol:encode(Map),
-  ?assertEqual(?BINARY_SAI_RESULT, Bin).
-
-missing_params_test() ->
-  Res1 = gsup_protocol:decode(?BINARY_ISD_REQUEST_BAD),
-  ?assertEqual({error,{ie_missing,[pdp_info_complete]}}, Res1),
-  Res2 = gsup_protocol:encode(#{message_type => mo_forward_request, imsi => <<"123456">>}),
-  ?assertEqual({error,{ie_missing,[sm_rp_mr,sm_rp_da,sm_rp_oa,sm_rp_ui]}}, Res2).
-
-excess_params_test() ->
-  Res1 = gsup_protocol:encode(#{message_type => lu_error,imsi => <<"1234">>,cause => 1,pdp_info_complete => <<>>}),
-  ?assertEqual({error,{ie_not_expected,[pdp_info_complete]}}, Res1).
-
--endif.
