@@ -82,6 +82,12 @@
 
 -define(OSMO_EXT, 16#ee).
 -define(GSUP_OSMO_EXT, 16#05).
+-define(OSMO_IPAC_PROTO_CCM, 16#fe).
+-define(OSMO_PING, 0).
+-define(OSMO_PONG, 1).
+-define(OSMO_GET, 4).
+-define(OSMO_RESP, 5).
+-define(OSMO_ACK, 6).
 
 -define(SESSION_STATE_BEGIN, 1).
 -define(SESSION_STATE_CONTINUE, 2).

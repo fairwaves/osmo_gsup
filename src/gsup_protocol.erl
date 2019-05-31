@@ -5,7 +5,16 @@
 -export([decode/1, encode/1, decode_bcd/1]).
 -export_type(['GSUPMessage'/0, 'GSUPMessageType'/0]).
 
--spec decode(binary()) -> {ok, {'GSUPMessage'(), binary()}} | {more_data, binary()} | {error, term()}.
+-spec decode(binary()) -> {ok, {'GSUPMessage'(), binary()}} | {more_data, binary()} | {reply, ping | resp | ack, binary(), binary()} | {error, term()}.
+decode(<<1:16, ?OSMO_IPAC_PROTO_CCM, ?OSMO_PING, Rest/binary>>) ->
+  {reply, ping, <<1:16, ?OSMO_IPAC_PROTO_CCM, ?OSMO_PONG>>, Rest};
+
+decode(<<1:16, ?OSMO_IPAC_PROTO_CCM, ?OSMO_RESP, Rest/binary>>) ->
+  {reply, resp, <<1:16, ?OSMO_IPAC_PROTO_CCM, ?OSMO_ACK>>, Rest};
+
+decode(<<1:16, ?OSMO_IPAC_PROTO_CCM, ?OSMO_ACK, Rest/binary>>) ->
+  {reply, ack, <<1:16, ?OSMO_IPAC_PROTO_CCM, ?OSMO_GET>>, Rest};
+
 decode(<<PSize:16, ?OSMO_EXT, Packet:PSize/binary, Rest/binary>>) ->
   <<?GSUP_OSMO_EXT, MsgNum, Tail/binary>> = Packet,
   GSUPMessage = decode_ie(Tail, #{}),
