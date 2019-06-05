@@ -61,7 +61,7 @@
   freeze_p_tmsi => binary(),  
   msisdn => binary(),
   hlr_number => binary(),
-  pdp_context_id => integer(),
+  pdp_context_id => [integer()],
   pdp_charging => integer(),
   rand => binary(),
   auts => binary(),

@@ -5,6 +5,14 @@
 -export([decode/1, encode/1, decode_bcd/1]).
 -export_type(['GSUPMessage'/0, 'GSUPMessageType'/0]).
 
+-define (CHECK_SIZE(IE, Len, Value),
+  Value >= 0 andalso Value < (1 bsl (Len * 8)) orelse error({check_size, IE, Value})
+  ).
+
+-ifdef (TEST).
+-export ([encode_ie/2]).
+-endif.
+
 -spec decode(binary()) -> {ok, {'GSUPMessage'(), binary()}} | {more_data, binary()} | {reply, ping | resp | ack, binary(), binary()} | {error, term()}.
 decode(<<1:16, ?OSMO_IPAC_PROTO_CCM, ?OSMO_PING, Rest/binary>>) ->
   {reply, ping, <<1:16, ?OSMO_IPAC_PROTO_CCM, ?OSMO_PONG>>, Rest};
@@ -71,7 +79,8 @@ decode_ie(<<?HLR_NUMBER_HEX, Len, HLRNumber:Len/binary, Tail/binary>>, Map) ->
   decode_ie(Tail, Map#{hlr_number => decode_msisdn(HLRNumber, <<>>)});
 
 decode_ie(<<?PDP_CONTEXT_ID_HEX, Len, PDPContextId:Len/unit:8, Tail/binary>>, Map) ->
-  decode_ie(Tail, Map#{pdp_context_id => PDPContextId});
+  List = maps:get(pdp_context_id, Map, []),
+  decode_ie(Tail, Map#{pdp_context_id => List ++ [PDPContextId]});
 
 decode_ie(<<?PDP_CHARGING_HEX, Len, PDPCharging:Len/unit:8, Tail/binary>>, Map) ->
   decode_ie(Tail, Map#{pdp_charging => PDPCharging});
@@ -214,10 +223,10 @@ encode_ie(#{imsi := Value0} = GSUPMessage, Tail) ->
   Len = size(Value),
   encode_ie(maps:without([imsi], GSUPMessage), <<Tail/binary, ?IMSI_HEX, Len, Value/binary>>);
 
-encode_ie(#{cause := Value0} = GSUPMessage, Tail) ->
-  Value = encode_varint(Value0),
-  Len = size(Value),
-  encode_ie(maps:without([cause], GSUPMessage), <<Tail/binary, ?CAUSE_HEX, Len, Value/binary>>);
+encode_ie(#{cause := Value} = GSUPMessage, Tail) ->
+  Len = 1,
+  ?CHECK_SIZE(cause, Len, Value),
+  encode_ie(maps:without([cause], GSUPMessage), <<Tail/binary, ?CAUSE_HEX, Len, Value:Len/unit:8>>);
 
 encode_ie(#{auth_tuples := Tuples0} = GSUPMessage, Tail) ->
   Tuples = <<
@@ -242,10 +251,10 @@ encode_ie(#{pdp_info_list := PDPInfoList0} = GSUPMessage, Tail) -> %% PDPInfo
     end || PDPInfo <- PDPInfoList0>>,
   encode_ie(maps:without([pdp_info_list], GSUPMessage), <<Tail/binary, PDPInfoList/binary>>);
 
-encode_ie(#{cancellation_type := Value0} = GSUPMessage, Tail) ->
-  Value = encode_varint(Value0),
-  Len = size(Value),
-  encode_ie(maps:without([cancellation_type], GSUPMessage), <<Tail/binary, ?CANCELLATION_TYPE_HEX, Len, Value/binary>>);
+encode_ie(#{cancellation_type := Value} = GSUPMessage, Tail) ->
+  Len = 1,
+  ?CHECK_SIZE(cancellation_type, Len, Value),
+  encode_ie(maps:without([cancellation_type], GSUPMessage), <<Tail/binary, ?CANCELLATION_TYPE_HEX, Len, Value:Len/unit:8>>);
 
 encode_ie(#{freeze_p_tmsi := Value} = GSUPMessage, Tail) ->
   Len = size(Value),
@@ -261,15 +270,19 @@ encode_ie(#{hlr_number := Value0} = GSUPMessage, Tail) ->
   Len = size(Value) + 1,
   encode_ie(maps:without([hlr_number], GSUPMessage), <<Tail/binary, ?HLR_NUMBER_HEX, Len, 16#06, Value/binary>>);
 
-encode_ie(#{pdp_context_id := Value0} = GSUPMessage, Tail) ->
-  Value = encode_varint(Value0),
-  Len = size(Value),
-  encode_ie(maps:without([pdp_context_id], GSUPMessage), <<Tail/binary, ?PDP_CONTEXT_ID_HEX, Len, Value/binary>>);
+encode_ie(#{pdp_context_id := PDPCIdList0} = GSUPMessage, Tail) ->
+  Len = 1,
+  PDPCIdList = <<
+    begin
+      ?CHECK_SIZE(pdp_context_id, Len, Value),
+      <<?PDP_CONTEXT_ID_HEX, Len, Value:Len/unit:8>>
+    end || Value <- PDPCIdList0>>,
+  encode_ie(maps:without([pdp_context_id], GSUPMessage), <<Tail/binary, PDPCIdList/binary>>);
 
-encode_ie(#{pdp_charging := Value0} = GSUPMessage, Tail) ->
-  Value = encode_varint(Value0),
-  Len = size(Value),
-  encode_ie(maps:without([pdp_charging], GSUPMessage), <<Tail/binary, ?PDP_CHARGING_HEX, Len, Value/binary>>);
+encode_ie(#{pdp_charging := Value} = GSUPMessage, Tail) ->
+  Len = 2,
+  ?CHECK_SIZE(pdp_charging, Len, Value),
+  encode_ie(maps:without([pdp_charging], GSUPMessage), <<Tail/binary, ?PDP_CHARGING_HEX, Len, Value:Len/unit:8>>);
 
 encode_ie(#{rand := Value} = GSUPMessage, Tail) ->
   encode_ie(maps:without([rand], GSUPMessage), <<Tail/binary, ?RAND_HEX, 16, Value:16/unit:8>>);
@@ -277,29 +290,29 @@ encode_ie(#{rand := Value} = GSUPMessage, Tail) ->
 encode_ie(#{auts := Value} = GSUPMessage, Tail) ->
   encode_ie(maps:without([auts], GSUPMessage), <<Tail/binary, ?AUTS_HEX, 14, Value:14/unit:8>>);
 
-encode_ie(#{cn_domain := Value0} = GSUPMessage, Tail) ->
-  Value = encode_varint(Value0),
-  Len = size(Value),
-  encode_ie(maps:without([cn_domain], GSUPMessage), <<Tail/binary, ?CN_DOMAIN_HEX, Len, Value/binary>>);
+encode_ie(#{cn_domain := Value} = GSUPMessage, Tail) ->
+  Len = 1,
+  ?CHECK_SIZE(cn_domain, Len, Value),
+  encode_ie(maps:without([cn_domain], GSUPMessage), <<Tail/binary, ?CN_DOMAIN_HEX, Len, Value:Len/unit:8>>);
 
-encode_ie(#{session_id := Value0} = GSUPMessage, Tail) ->
-  Value = encode_varint(Value0),
-  Len = size(Value),
-  encode_ie(maps:without([session_id], GSUPMessage), <<Tail/binary, ?SESSION_ID_HEX, Len, Value/binary>>);
+encode_ie(#{session_id := Value} = GSUPMessage, Tail) ->
+  Len = 4,
+  ?CHECK_SIZE(session_id, Len, Value),
+  encode_ie(maps:without([session_id], GSUPMessage), <<Tail/binary, ?SESSION_ID_HEX, Len, Value:Len/unit:8>>);
 
-encode_ie(#{session_state := Value0} = GSUPMessage, Tail) ->
-  Value = encode_varint(Value0),
-  Len = size(Value),
-  encode_ie(maps:without([session_state], GSUPMessage), <<Tail/binary, ?SESSION_STATE_HEX, Len, Value/binary>>);
+encode_ie(#{session_state := Value} = GSUPMessage, Tail) ->
+  Len = 1,
+  ?CHECK_SIZE(session_state, Len, Value),
+  encode_ie(maps:without([session_state], GSUPMessage), <<Tail/binary, ?SESSION_STATE_HEX, Len, Value:Len/unit:8>>);
 
 encode_ie(#{ss_info := Value} = GSUPMessage, Tail) ->
   Len = size(Value),
   encode_ie(maps:without([ss_info], GSUPMessage), <<Tail/binary, ?SS_INFO_HEX, Len, Value/binary>>);
 
-encode_ie(#{sm_rp_mr := Value0} = GSUPMessage, Tail) ->
-  Value = encode_varint(Value0),
-  Len = size(Value),
-  encode_ie(maps:without([sm_rp_mr], GSUPMessage), <<Tail/binary, ?SM_RP_MR_HEX, Len, Value/binary>>);
+encode_ie(#{sm_rp_mr := Value} = GSUPMessage, Tail) ->
+  Len = 1,
+  ?CHECK_SIZE(sm_rp_mr, Len, Value),
+  encode_ie(maps:without([sm_rp_mr], GSUPMessage), <<Tail/binary, ?SM_RP_MR_HEX, Len, Value:Len/unit:8>>);
 
 encode_ie(#{sm_rp_da := Value0} = GSUPMessage, Tail) ->
   Value = encode_oa_da(Value0),
@@ -315,29 +328,29 @@ encode_ie(#{sm_rp_ui := Value} = GSUPMessage, Tail) ->
   Len = size(Value),
   encode_ie(maps:without([sm_rp_ui], GSUPMessage), <<Tail/binary, ?SM_RP_UI_HEX, Len, Value/binary>>);
 
-encode_ie(#{sm_rp_cause := Value0} = GSUPMessage, Tail) ->
-  Value = encode_varint(Value0),
-  Len = size(Value),
-  encode_ie(maps:without([sm_rp_cause], GSUPMessage), <<Tail/binary, ?SM_RP_CAUSE_HEX, Len, Value/binary>>);
+encode_ie(#{sm_rp_cause := Value} = GSUPMessage, Tail) ->
+  Len = 1,
+  ?CHECK_SIZE(sm_rp_cause, Len, Value),
+  encode_ie(maps:without([sm_rp_cause], GSUPMessage), <<Tail/binary, ?SM_RP_CAUSE_HEX, Len, Value:Len/unit:8>>);
 
-encode_ie(#{sm_rp_mms := Value0} = GSUPMessage, Tail) ->
-  Value = encode_varint(Value0),
-  Len = size(Value),
-  encode_ie(maps:without([sm_rp_mms], GSUPMessage), <<Tail/binary, ?SM_RP_MMS_HEX, Len, Value/binary>>);
+encode_ie(#{sm_rp_mms := Value} = GSUPMessage, Tail) ->
+  Len = 1,
+  ?CHECK_SIZE(sm_rp_mms, Len, Value),
+  encode_ie(maps:without([sm_rp_mms], GSUPMessage), <<Tail/binary, ?SM_RP_MMS_HEX, Len, Value:Len/unit:8>>);
 
-encode_ie(#{sm_alert_reason := Value0} = GSUPMessage, Tail) ->
-  Value = encode_varint(Value0),
-  Len = size(Value),
-  encode_ie(maps:without([sm_alert_reason], GSUPMessage), <<Tail/binary, ?SM_ALERT_REASON_HEX, Len, Value/binary>>);
+encode_ie(#{sm_alert_reason := Value} = GSUPMessage, Tail) ->
+  Len = 1,
+  ?CHECK_SIZE(sm_alert_reason, Len, Value),
+  encode_ie(maps:without([sm_alert_reason], GSUPMessage), <<Tail/binary, ?SM_ALERT_REASON_HEX, Len, Value:Len/unit:8>>);
 
 encode_ie(#{imei := Value} = GSUPMessage, Tail) ->
   Len = size(Value),
   encode_ie(maps:without([imei], GSUPMessage), <<Tail/binary, ?IMEI_HEX, Len, Value/binary>>);
 
-encode_ie(#{imei_check_result := Value0} = GSUPMessage, Tail) ->
-  Value = encode_varint(Value0),
-  Len = size(Value),
-  encode_ie(maps:without([imei_check_result], GSUPMessage), <<Tail/binary, ?IMEI_CHECK_RESULT_HEX, Len, Value/binary>>);
+encode_ie(#{imei_check_result := Value} = GSUPMessage, Tail) ->
+  Len = 1,
+  ?CHECK_SIZE(imei_check_result, Len, Value),
+  encode_ie(maps:without([imei_check_result], GSUPMessage), <<Tail/binary, ?IMEI_CHECK_RESULT_HEX, Len, Value:Len/unit:8>>);
 
 encode_ie(_, Tail) -> Tail.
 
@@ -357,14 +370,6 @@ encode_oa_da({msisdn, Addr}) -> <<16#02, 16#06, (encode_bcd(Addr, <<>>))/binary>
 encode_oa_da({smsc, Addr}) -> <<16#03, 16#00, (encode_bcd(Addr, <<>>))/binary>>;
 
 encode_oa_da({omit, _}) -> <<16#ff>>.
-
-encode_varint(X) when is_integer(X), X >= 0, X =< 16#ff -> <<X:8>>;
-
-encode_varint(X) when is_integer(X), X >= 0, X =< 16#ffff -> <<X:16>>;
-
-encode_varint(X) when is_integer(X), X >= 0, X =< 16#ffffff -> <<X:24>>;
-
-encode_varint(X) when is_integer(X), X >= 0, X =< 16#ffffffff -> <<X:32>>.
 
 check_auth_tuple(AuthTuple) ->
   Mandatory = [rand, sres, kc],

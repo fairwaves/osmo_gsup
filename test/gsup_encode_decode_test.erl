@@ -54,3 +54,12 @@ missing_params_test() ->
 excess_params_test() ->
   Res1 = gsup_protocol:encode(#{message_type => lu_error,imsi => <<"1234">>,cause => 1,pdp_info_complete => <<>>}),
   ?assertEqual({error,{ie_not_expected,[pdp_info_complete]}}, Res1).
+
+ie_size_test() ->
+  ?assertError({check_size,cause,-1}, gsup_protocol:encode_ie(#{cause => -1}, <<>>)),
+  ?assertEqual(<<2,1,255>>, gsup_protocol:encode_ie(#{cause => 255}, <<>>)),
+  ?assertError({check_size,cause,256}, gsup_protocol:encode_ie(#{cause => 256}, <<>>)),
+  ?assertEqual(<<20,2,255,255>>, gsup_protocol:encode_ie(#{pdp_charging => 16#ffff}, <<>>)),
+  ?assertError({check_size,pdp_charging,16#10000}, gsup_protocol:encode_ie(#{pdp_charging => 16#10000}, <<>>)),
+  ?assertEqual(<<48,4,255,255,255,255>>, gsup_protocol:encode_ie(#{session_id => 16#ffffffff}, <<>>)),
+  ?assertError({check_size,session_id,16#100000000}, gsup_protocol:encode_ie(#{session_id => 16#100000000}, <<>>)).
