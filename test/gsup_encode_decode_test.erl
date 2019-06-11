@@ -2,7 +2,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--define(BINARY_ISD_REQUEST_BAD, <<0,33,238,5, 16,1,8,98,66,130,119,116,88,81,242,5,7,16,1,1,18,2,1,42,8,7,6,148,97,49,100,96,33,40,1,1>>).
+-define(BINARY_ISD_REQUEST_BAD, <<16,1,8,98,66,130,119,116,88,81,242,5,7,16,1,1,18,2,1,42,8,7,6,148,97,49,100,96,33,40,1,1>>).
 -define(BINARY_ISD_REQUEST, <<0,35,238,5, 16,1,8,98,66,130,119,116,88,81,242,4,0,5,7,16,1,1,18,2,1,42,8,7,6,148,97,49,100,96,33,40,1,1>>).
 -define(MAP_ISD_REQUEST, #{cn_domain => 1,imsi => <<"262428774785152">>,message_type => insert_sub_data_req,msisdn => <<"491613460612">>,pdp_info_list => [#{access_point_name => <<1,42>>,pdp_context_id => 1}], pdp_info_complete => true}).
 
@@ -22,27 +22,31 @@
   ],imsi => <<"262420056737700">>,message_type => send_auth_info_res}).
 
 isd_request_test() ->
-  {ok, {Map, <<>>}} = gsup_protocol:decode(?BINARY_ISD_REQUEST),
+  {ok, {Pkt, <<>>}} = ipa:decode(?BINARY_ISD_REQUEST),
+  Map = gsup_protocol:decode(Pkt),
   ?assertEqual(?MAP_ISD_REQUEST, Map),
-  {ok, Bin} = gsup_protocol:encode(Map),
+  Bin = ipa:encode(gsup_protocol:encode(Map)),
   ?assertEqual(?BINARY_ISD_REQUEST, Bin).
 
 mo_forward_request_test() ->
-  {ok, {Map, <<>>}} = gsup_protocol:decode(?BINARY_MO_FORWARD_REQUEST),
+  {ok, {Pkt, <<>>}} = ipa:decode(?BINARY_MO_FORWARD_REQUEST),
+  Map = gsup_protocol:decode(Pkt),
   ?assertEqual(?MAP_MO_FORWARD_REQUEST, Map),
-  {ok, Bin} = gsup_protocol:encode(Map),
+  Bin = ipa:encode(gsup_protocol:encode(Map)),
   ?assertEqual(?BINARY_MO_FORWARD_REQUEST, Bin).
 
 ss_request_test() ->
-  {ok, {Map, <<>>}} = gsup_protocol:decode(?BINARY_SS_REQUEST),
+  {ok, {Pkt, <<>>}} = ipa:decode(?BINARY_SS_REQUEST),
+  Map = gsup_protocol:decode(Pkt),
   ?assertEqual(?MAP_SS_REQUEST, Map),
-  {ok, Bin} = gsup_protocol:encode(Map),
+  Bin = ipa:encode(gsup_protocol:encode(Map)),
   ?assertEqual(?BINARY_SS_REQUEST, Bin).
 
 sai_result_test() ->
-  {ok, {Map, <<>>}} = gsup_protocol:decode(?BINARY_SAI_RESULT),
+  {ok, {Pkt, <<>>}} = ipa:decode(?BINARY_SAI_RESULT),
+  Map = gsup_protocol:decode(Pkt),
   ?assertEqual(?MAP_SAI_RESULT, Map),
-  {ok, Bin} = gsup_protocol:encode(Map),
+  Bin = ipa:encode(gsup_protocol:encode(Map)),
   ?assertEqual(?BINARY_SAI_RESULT, Bin).
 
 missing_params_test() ->

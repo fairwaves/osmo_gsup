@@ -18,36 +18,20 @@
 -export ([encode_ie/2, decode_ie/2]).
 -endif.
 
--spec decode(binary()) -> {ok, {'GSUPMessage'(), binary()}} | {more_data, binary()} | {reply, ping | resp | ack, binary(), binary()} | {error, term()}.
-decode(<<1:16, ?IPAC_PROTO_IPACCESS, ?IPAC_MSGT_PING, Rest/binary>>) ->
-  {reply, ping, <<1:16, ?IPAC_PROTO_IPACCESS, ?IPAC_MSGT_PONG>>, Rest};
-
-decode(<<1:16, ?IPAC_PROTO_IPACCESS, ?IPAC_MSGT_ID_RESP, Rest/binary>>) ->
-  {reply, resp, <<1:16, ?IPAC_PROTO_IPACCESS, ?IPAC_MSGT_ID_ACK>>, Rest};
-
-decode(<<1:16, ?IPAC_PROTO_IPACCESS, ?IPAC_MSGT_ID_ACK, Rest/binary>>) ->
-  {reply, ack, <<1:16, ?IPAC_PROTO_IPACCESS, ?IPAC_MSGT_ID_GET>>, Rest};
-
-decode(<<PSize:16, ?IPAC_PROTO_OSMO, Packet:PSize/binary, Rest/binary>>) ->
-  <<?IPAC_PROTO_EXT_GSUP, MsgType, Tail/binary>> = Packet,
+-spec decode(binary()) -> 'GSUPMessage'() | no_return().
+decode(<<MsgType, Tail/binary>>) ->
   case ?GSUP_MESSAGES() of
     #{MsgType := #{message_type := MsgTypeAtom, mandatory := Mandatory} = Map} ->
       GSUPMessage = decode_ie(Tail, #{message_type => MsgTypeAtom}),
       Possible = Mandatory ++ maps:get(optional, Map, []),
       case {maps:size(maps:with(Mandatory, GSUPMessage)) == length(Mandatory), maps:size(maps:without(Possible ++ [message_type], GSUPMessage)) == 0} of
-        {true, true} -> {ok, {GSUPMessage, Rest}};
+        {true, true} -> GSUPMessage;
         {false, _} -> error({mandatory_ie_missing, MsgTypeAtom, Mandatory -- maps:keys(GSUPMessage)});
         {_, false} -> error({ie_not_expected, MsgTypeAtom, maps:keys(GSUPMessage) -- Possible ++ [message_type]})
       end;
     _ -> 
       error({unknown_gsup_msg_type, MsgType})
-  end;
-
-decode(<<_PSize:16, X, _/binary>> = Rest) when X /= ?IPAC_PROTO_OSMO ->
-  {error, {bad_packet, Rest}};
-
-decode(Rest) ->
-  {more_data, Rest}.
+  end.
 
 decode_ie(<<>>, Map) -> Map;
 
@@ -237,14 +221,14 @@ decode_pdp_info(<<?PDP_CHARGING, Len, PDPCharging:Len/unit:8, Tail/binary>>, Map
 
 decode_pdp_info(<<>>, Map) -> Map.
 
--spec encode('GSUPMessage'()) -> {ok, binary()} | {error, term()}.
+-spec encode('GSUPMessage'()) -> binary() | no_return().
 encode(GSUPMessage = #{message_type := MsgTypeAtom}) when is_atom(MsgTypeAtom) ->
   F = fun
     (MsgType_, #{message_type := MsgTypeAtom_}, undefined) when MsgTypeAtom_ == MsgTypeAtom -> MsgType_;
     (_, _, Acc) -> Acc
   end,
   case maps:fold(F, undefined, ?GSUP_MESSAGES()) of
-    undefined -> error({unknown_message, MsgTypeAtom}), MsgType = undefined;
+    undefined -> error({unknown_message_type, MsgTypeAtom}), MsgType = undefined;
     MsgType when is_integer(MsgType) -> ok
   end,
   encode(MsgType, GSUPMessage).
@@ -256,8 +240,7 @@ encode(MsgType, GSUPMessage) when is_integer(MsgType), is_map(GSUPMessage), MsgT
       case {maps:size(maps:with(Mandatory, GSUPMessage)) == length(Mandatory), maps:size(maps:without(Possible ++ [message_type], GSUPMessage)) == 0} of
         {true, true} -> 
           Tail = encode_ie(GSUPMessage, <<>>),
-          Len = size(Tail) + 2,
-          {ok, <<Len:16, ?IPAC_PROTO_OSMO, ?IPAC_PROTO_EXT_GSUP, MsgType, Tail/binary>>};
+          <<MsgType, Tail/binary>>;
         {false, _} -> error({mandatory_ie_missing, MsgTypeAtom, Mandatory -- maps:keys(GSUPMessage)});
         {_, false} -> error({ie_not_expected, MsgTypeAtom, maps:keys(GSUPMessage) -- Possible ++ [message_type]})
       end;
