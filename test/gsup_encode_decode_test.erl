@@ -4,10 +4,10 @@
 
 -define(BINARY_ISD_REQUEST_BAD, <<16,1,8,98,66,130,119,116,88,81,242,5,7,16,1,1,18,2,1,42,8,7,6,148,97,49,100,96,33,40,1,1>>).
 -define(BINARY_ISD_REQUEST, <<0,35,238,5, 16,1,8,98,66,130,119,116,88,81,242,4,0,5,7,16,1,1,18,2,1,42,8,7,6,148,97,49,100,96,33,40,1,1>>).
--define(MAP_ISD_REQUEST, #{cn_domain => 1,imsi => <<"262428774785152">>,message_type => insert_sub_data_req,msisdn => <<"491613460612">>,pdp_info_list => [#{access_point_name => <<1,42>>,pdp_context_id => 1}], pdp_info_complete => true}).
+-define(MAP_ISD_REQUEST, #{cn_domain => 1,imsi => <<"262428774785152">>,message_type => insert_sub_data_req,msisdn => <<6,148,97,49,100,96,33>>,pdp_info_list => [#{access_point_name => <<1,42>>,pdp_context_id => 1}], pdp_info_complete => true}).
 
 -define(BINARY_MO_FORWARD_REQUEST, <<0,44,238,5, 36,1,8,98,66,2,0,0,0,128,248,64,1,66,65,5,3,0,137,103,245,66,8,2,6,148,33,3,0,0,136,67,10,5,35,5,0,33,67,245,0,0,0>>).
--define(MAP_MO_FORWARD_REQUEST, #{imsi => <<"262420000000088">>,message_type => mo_forward_req,sm_rp_da => {smsc,<<"98765">>},sm_rp_mr => 66,sm_rp_oa => {msisdn,<<"491230000088">>},sm_rp_ui => <<5,35,5,0,33,67,245,0,0,0>>}).
+-define(MAP_MO_FORWARD_REQUEST, #{imsi => <<"262420000000088">>,message_type => mo_forward_req,sm_rp_da => <<3,0,137,103,245>>,sm_rp_mr => 66,sm_rp_oa => <<2,6,148,33,3,0,0,136>>,sm_rp_ui => <<5,35,5,0,33,67,245,0,0,0>>}).
 
 -define(BINARY_SS_REQUEST, <<0,44,238,5, 32,1,8,98,66,2,0,0,0,64,246,48,4,32,0,0,1,49,1,1,53,21,161,19,2,1,5,2,1,59,48,11,4,1,15,4,6,170,81,12,6,27,1>>).
 -define(MAP_SS_REQUEST, #{imsi => <<"262420000000046">>,message_type => ss_req,session_id => 536870913,session_state => 1,ss_info => <<161,19,2,1,5,2,1,59,48,11,4,1,15,4,6,170,81,12,6,27,1>>}).

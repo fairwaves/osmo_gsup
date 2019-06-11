@@ -3,7 +3,7 @@
 -include ("gsup_protocol.hrl").
 -include ("ipa.hrl").
 
--export([decode/1, encode/1, decode_bcd/1]).
+-export([decode/1, encode/1, decode_bcd/1, encode_bcd/1]).
 -export_type(['GSUPMessage'/0, 'GSUPMessageType'/0]).
 
 -define (CHECK_SIZE(IE, Len, Value),
@@ -21,13 +21,11 @@
 -spec decode(binary()) -> 'GSUPMessage'() | no_return().
 decode(<<MsgType, Tail/binary>>) ->
   case ?GSUP_MESSAGES() of
-    #{MsgType := #{message_type := MsgTypeAtom, mandatory := Mandatory} = Map} ->
+    #{MsgType := #{message_type := MsgTypeAtom, mandatory := Mandatory}} ->
       GSUPMessage = decode_ie(Tail, #{message_type => MsgTypeAtom}),
-      Possible = Mandatory ++ maps:get(optional, Map, []),
-      case {maps:size(maps:with(Mandatory, GSUPMessage)) == length(Mandatory), maps:size(maps:without(Possible ++ [message_type], GSUPMessage)) == 0} of
-        {true, true} -> GSUPMessage;
-        {false, _} -> error({mandatory_ie_missing, MsgTypeAtom, Mandatory -- maps:keys(GSUPMessage)});
-        {_, false} -> error({ie_not_expected, MsgTypeAtom, maps:keys(GSUPMessage) -- Possible ++ [message_type]})
+      case maps:size(maps:with(Mandatory, GSUPMessage)) == length(Mandatory) of
+        true -> GSUPMessage;
+        false -> error({mandatory_ie_missing, MsgTypeAtom, Mandatory -- maps:keys(GSUPMessage)})
       end;
     _ -> 
       error({unknown_gsup_msg_type, MsgType})
@@ -70,12 +68,12 @@ decode_ie(<<?FREEZE_P_TMSI, Len, _:Len/binary, Tail/binary>>, Map) ->
   decode_ie(Tail, Map#{freeze_p_tmsi => true});
 
 decode_ie(<<?MSISDN, Len, MSISDN:Len/binary, Tail/binary>>, Map) ->
-  ?CHECK_SIZE_BETWEEN(msisdn, Len, 0, 7),
-  decode_ie(Tail, Map#{msisdn => decode_msisdn(MSISDN, <<>>)});
+  ?CHECK_SIZE_BETWEEN(msisdn, Len, 0, 8),
+  decode_ie(Tail, Map#{msisdn => MSISDN});
 
 decode_ie(<<?HLR_NUMBER, Len, HLRNumber:Len/binary, Tail/binary>>, Map) ->
-  ?CHECK_SIZE_BETWEEN(hlr_number, Len, 0, 7),
-  decode_ie(Tail, Map#{hlr_number => decode_msisdn(HLRNumber, <<>>)});
+  ?CHECK_SIZE_BETWEEN(hlr_number, Len, 0, 8),
+  decode_ie(Tail, Map#{hlr_number => HLRNumber});
 
 decode_ie(<<?PDP_CONTEXT_ID, Len, PDPContextId:Len/unit:8, Tail/binary>>, Map) ->
   ?CHECK_SIZE_BETWEEN(pdp_context_id, Len, 1, 1),
@@ -115,10 +113,10 @@ decode_ie(<<?SM_RP_MR, Len, MsgRef:Len/unit:8, Tail/binary>>, Map) ->
   decode_ie(Tail, Map#{sm_rp_mr => MsgRef});
 
 decode_ie(<<?SM_RP_DA, Len, DA:Len/binary, Tail/binary>>, Map) ->
-  decode_ie(Tail, Map#{sm_rp_da => decode_oa_da(DA, <<>>)});
+  decode_ie(Tail, Map#{sm_rp_da => DA});
 
 decode_ie(<<?SM_RP_OA, Len, OA:Len/binary, Tail/binary>>, Map) ->
-  decode_ie(Tail, Map#{sm_rp_oa => decode_oa_da(OA, <<>>)});
+  decode_ie(Tail, Map#{sm_rp_oa => OA});
 
 decode_ie(<<?SM_RP_UI, Len, MessageBody:Len/binary, Tail/binary>>, Map) ->
   decode_ie(Tail, Map#{sm_rp_ui => MessageBody});
@@ -153,21 +151,27 @@ decode_bcd(BCDNumber) -> decode_bcd(BCDNumber, <<>>).
 
 decode_bcd(<<>>, Number) -> Number;
 
-decode_bcd(<<A:4, B:4, Tail/binary>>, Number) when A < 10, B < 10 ->
-  decode_bcd(Tail, <<Number/binary, ($0 + B), ($0 + A)>>);
+decode_bcd(<<A:4, B:4, Tail/binary>>, Number) when A < 15, B < 15 ->
+  decode_bcd(Tail, <<Number/binary, (decode_nibble(B)), (decode_nibble(A))>>);
 
-decode_bcd(<<_:4, B:4, _Tail/binary>>, Number) when B < 10 ->
-  <<Number/binary, ($0 + B)>>.
+decode_bcd(<<_:4, B:4, _Tail/binary>>, Number) when B < 15 ->
+  <<Number/binary, (decode_nibble(B))>>.
 
-decode_msisdn(<<_X, Data/binary>>, Number) -> decode_bcd(Data, Number).
-
-decode_oa_da(<<1, Addr/binary>>, Number) -> {imsi, decode_bcd(Addr, Number)};
-
-decode_oa_da(<<2, _, Addr/binary>>, Number) -> {msisdn, decode_bcd(Addr, Number)};
-
-decode_oa_da(<<3, _, Addr/binary>>, Number) -> {smsc, decode_bcd(Addr, Number)};
-
-decode_oa_da(<<16#ff, _Addr/binary>>, _Number) -> {omit, undefined}.
+decode_nibble(0) -> $0;
+decode_nibble(1) -> $1;
+decode_nibble(2) -> $2;
+decode_nibble(3) -> $3;
+decode_nibble(4) -> $4;
+decode_nibble(5) -> $5;
+decode_nibble(6) -> $6;
+decode_nibble(7) -> $7;
+decode_nibble(8) -> $8;
+decode_nibble(9) -> $9;
+decode_nibble(10) -> $*;
+decode_nibble(11) -> $#;
+decode_nibble(12) -> $a;
+decode_nibble(13) -> $b;
+decode_nibble(14) -> $c.
 
 decode_auth_tuple(<<?RAND, Len, Rand:Len/binary, Tail/binary>>, Map) ->
   ?CHECK_SIZE_BETWEEN(rand, Len, 16, 16),
@@ -298,15 +302,15 @@ encode_ie(#{freeze_p_tmsi := true} = GSUPMessage, Head) ->
 encode_ie(#{freeze_p_tmsi := _} = _GSUPMessage, _Head) ->
   error(freeze_p_tmsi_must_be_true);
 
-encode_ie(#{msisdn := Value0} = GSUPMessage, Head) ->
-  Value = encode_bcd(Value0, <<>>),
-  Len = size(Value) + 1,
-  encode_ie(maps:without([msisdn], GSUPMessage), <<Head/binary, ?MSISDN, Len, 16#06, Value/binary>>);
+encode_ie(#{msisdn := Value} = GSUPMessage, Head) ->
+  Len = size(Value),
+  ?CHECK_SIZE_BETWEEN(msisdn, Len, 0, 8),
+  encode_ie(maps:without([msisdn], GSUPMessage), <<Head/binary, ?MSISDN, Len, Value/binary>>);
 
-encode_ie(#{hlr_number := Value0} = GSUPMessage, Head) ->
-  Value = encode_bcd(Value0, <<>>),
-  Len = size(Value) + 1,
-  encode_ie(maps:without([hlr_number], GSUPMessage), <<Head/binary, ?HLR_NUMBER, Len, 16#06, Value/binary>>);
+encode_ie(#{hlr_number := Value} = GSUPMessage, Head) ->
+  Len = size(Value),
+  ?CHECK_SIZE_BETWEEN(hlr_number, Len, 0, 8),
+  encode_ie(maps:without([hlr_number], GSUPMessage), <<Head/binary, ?HLR_NUMBER, Len, Value/binary>>);
 
 encode_ie(#{pdp_context_id := PDPCIdList0} = GSUPMessage, Head) ->
   Len = 1,
@@ -352,13 +356,11 @@ encode_ie(#{sm_rp_mr := Value} = GSUPMessage, Head) ->
   ?CHECK_SIZE(sm_rp_mr, Len, Value),
   encode_ie(maps:without([sm_rp_mr], GSUPMessage), <<Head/binary, ?SM_RP_MR, Len, Value:Len/unit:8>>);
 
-encode_ie(#{sm_rp_da := Value0} = GSUPMessage, Head) ->
-  Value = encode_oa_da(Value0),
+encode_ie(#{sm_rp_da := Value} = GSUPMessage, Head) ->
   Len = size(Value),
   encode_ie(maps:without([sm_rp_da], GSUPMessage), <<Head/binary, ?SM_RP_DA, Len, Value/binary>>);
 
-encode_ie(#{sm_rp_oa := Value0} = GSUPMessage, Head) ->
-  Value = encode_oa_da(Value0),
+encode_ie(#{sm_rp_oa := Value} = GSUPMessage, Head) ->
   Len = size(Value),
   encode_ie(maps:without([sm_rp_oa], GSUPMessage), <<Head/binary, ?SM_RP_OA, Len, Value/binary>>);
 
@@ -392,22 +394,36 @@ encode_ie(#{imei_check_result := Value} = GSUPMessage, Head) ->
 
 encode_ie(_, Head) -> Head.
 
-encode_bcd(<<A, B, Tail/binary>>, BCDNumber) when A =< $9, A >= $0, B =< $9, B >= $0 ->
-  encode_bcd(Tail, <<BCDNumber/binary, B:4, A:4>>);
+encode_bcd(BCDNumber) -> encode_bcd(BCDNumber, <<>>).
 
-encode_bcd(<<A>>, BCDNumber) when A =< $9, A >= $0 ->
-  <<BCDNumber/binary, 16#f:4, A:4>>;
+encode_bcd(<<A, B, Tail/binary>>, BCDNumber) ->
+  encode_bcd(Tail, <<BCDNumber/binary, (encode_nibble(B)):4, (encode_nibble(A)):4>>);
+
+encode_bcd(<<A>>, BCDNumber) ->
+  <<BCDNumber/binary, 16#f:4, (encode_nibble(A)):4>>;
 
 encode_bcd(<<>>, BCDNumber) ->
   BCDNumber.
 
-encode_oa_da({imsi, Addr}) -> <<16#01, (encode_bcd(Addr, <<>>))/binary>>;
-
-encode_oa_da({msisdn, Addr}) -> <<16#02, 16#06, (encode_bcd(Addr, <<>>))/binary>>;
-
-encode_oa_da({smsc, Addr}) -> <<16#03, 16#00, (encode_bcd(Addr, <<>>))/binary>>;
-
-encode_oa_da({omit, _}) -> <<16#ff>>.
+encode_nibble($0) -> 0;
+encode_nibble($1) -> 1;
+encode_nibble($2) -> 2;
+encode_nibble($3) -> 3;
+encode_nibble($4) -> 4;
+encode_nibble($5) -> 5;
+encode_nibble($6) -> 6;
+encode_nibble($7) -> 7;
+encode_nibble($8) -> 8;
+encode_nibble($9) -> 9;
+encode_nibble($*) -> 10;
+encode_nibble($#) -> 11;
+encode_nibble($a) -> 12;
+encode_nibble($b) -> 13;
+encode_nibble($c) -> 14;
+encode_nibble($A) -> 12;
+encode_nibble($B) -> 13;
+encode_nibble($C) -> 14;
+encode_nibble(X) -> error({bad_bcd_character, X}).
 
 check_auth_tuple(AuthTuple) ->
   Mandatory = ?AUTH_TUPLE_MANDATORY,
