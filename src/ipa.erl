@@ -4,6 +4,7 @@
 
 -export ([decode/1, encode/1]).
 
+-spec decode(binary()) -> {ok, binary()} | {reply, ping | resp | ack, binary(), binary()} | {more_data, binary()} | {error, term()}.
 decode(<<1:16, ?IPAC_PROTO_IPACCESS, ?IPAC_MSGT_PING, Rest/binary>>) ->
   {reply, ping, <<1:16, ?IPAC_PROTO_IPACCESS, ?IPAC_MSGT_PONG>>, Rest};
 
@@ -27,6 +28,7 @@ decode(<<_PSize:16, X, _/binary>>) when X /= ?IPAC_PROTO_OSMO ->
 decode(Rest) ->
   {more_data, Rest}.
 
+-spec encode(binary()) -> binary().
 encode(Packet) ->
   Len = size(Packet) + 1,
   <<Len:16, ?IPAC_PROTO_OSMO, ?IPAC_PROTO_EXT_GSUP, Packet/binary>>.

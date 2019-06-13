@@ -60,10 +60,10 @@ ie_size_test() ->
   ?assertEqual(#{cause => 255}, gsup_protocol:decode_ie(<<2,1,255>>, #{})),
   ?assertError({ie_length_mismatch,cause,2}, gsup_protocol:decode_ie(<<2,2,0,0>>, #{})),
 
-  ?assertError({check_size,cause,-1}, gsup_protocol:encode_ie(#{cause => -1}, <<>>)),
+  ?assertError({ie_value_length_mismatch,cause,-1}, gsup_protocol:encode_ie(#{cause => -1}, <<>>)),
   ?assertEqual(<<2,1,255>>, gsup_protocol:encode_ie(#{cause => 255}, <<>>)),
-  ?assertError({check_size,cause,256}, gsup_protocol:encode_ie(#{cause => 256}, <<>>)),
+  ?assertError({ie_value_length_mismatch,cause,256}, gsup_protocol:encode_ie(#{cause => 256}, <<>>)),
   ?assertEqual(<<20,2,255,255>>, gsup_protocol:encode_ie(#{pdp_charging => 16#ffff}, <<>>)),
-  ?assertError({check_size,pdp_charging,16#10000}, gsup_protocol:encode_ie(#{pdp_charging => 16#10000}, <<>>)),
+  ?assertError({ie_value_length_mismatch,pdp_charging,16#10000}, gsup_protocol:encode_ie(#{pdp_charging => 16#10000}, <<>>)),
   ?assertEqual(<<48,4,255,255,255,255>>, gsup_protocol:encode_ie(#{session_id => 16#ffffffff}, <<>>)),
-  ?assertError({check_size,session_id,16#100000000}, gsup_protocol:encode_ie(#{session_id => 16#100000000}, <<>>)).
+  ?assertError({ie_value_length_mismatch,session_id,16#100000000}, gsup_protocol:encode_ie(#{session_id => 16#100000000}, <<>>)).
