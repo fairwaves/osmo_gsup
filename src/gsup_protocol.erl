@@ -82,6 +82,10 @@ decode_ie(<<?HLR_NUMBER, Len, HLRNumber:Len/binary, Tail/binary>>, Map) ->
   ?CHECK_LEN(hlr_number, Len, 0, 8),
   decode_ie(Tail, Map#{hlr_number => HLRNumber});
 
+decode_ie(<<?MESSAGE_CLASS, Len, MessageClass:Len/unit:8, Tail/binary>>, Map) ->
+  ?CHECK_LEN(message_class, Len, 1, 1),
+  decode_ie(Tail, Map#{message_class => MessageClass});
+
 decode_ie(<<?PDP_CONTEXT_ID, Len, PDPContextId:Len/unit:8, Tail/binary>>, Map) ->
   ?CHECK_LEN(pdp_context_id, Len, 1, 1),
   List = maps:get(pdp_context_id, Map, []),
@@ -248,7 +252,7 @@ encode(MsgType, GSUPMessage) when is_integer(MsgType), is_map(GSUPMessage), MsgT
   case ?GSUP_MESSAGES() of
     #{MsgType := #{message_type := MsgTypeAtom, mandatory := Mandatory0} = Map} ->
       Mandatory = Mandatory0 ++ ?MANDATORY_DEFAULT,
-      Possible = Mandatory ++ maps:get(optional, Map, []),
+      Possible = Mandatory ++ maps:get(optional, Map, []) ++ ?OPTIONAL_DEFAULT,
       case {maps:size(maps:with(Mandatory, GSUPMessage)) == length(Mandatory),
             maps:size(maps:without(Possible, GSUPMessage)) == 0} of
         {true, true} -> 
@@ -320,6 +324,11 @@ encode_ie(#{hlr_number := Value} = GSUPMessage, Head) ->
   Len = size(Value),
   ?CHECK_LEN(hlr_number, Len, 0, 8),
   encode_ie(maps:without([hlr_number], GSUPMessage), <<Head/binary, ?HLR_NUMBER, Len, Value/binary>>);
+
+encode_ie(#{message_class := Value} = GSUPMessage, Head) ->
+  Len = 1,
+  ?CHECK_SIZE(message_class, Len, Value),
+  encode_ie(maps:without([message_class], GSUPMessage), <<Head/binary, ?MESSAGE_CLASS, Len, Value:Len/unit:8>>);
 
 encode_ie(#{pdp_context_id := PDPCIdList0} = GSUPMessage, Head) ->
   Len = 1,

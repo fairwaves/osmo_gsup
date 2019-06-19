@@ -83,7 +83,8 @@
   sm_rp_mms => integer(),
   sm_alert_reason => integer(),
   imei => binary(),
-  imei_check_result => integer()
+  imei_check_result => integer(),
+  message_class => integer()
 }.
 
 -define(SESSION_STATE_BEGIN, 1).
@@ -99,6 +100,7 @@
 -define(FREEZE_P_TMSI, 16#07).
 -define(MSISDN, 16#08).
 -define(HLR_NUMBER, 16#09).
+-define(MESSAGE_CLASS, 16#0a).
 -define(PDP_CONTEXT_ID, 16#10).
 -define(PDP_TYPE, 16#11).
 -define(ACCESS_POINT_NAME, 16#12).
@@ -127,6 +129,8 @@
 -define(IMEI_CHECK_RESULT, 16#51).
 
 -define(MANDATORY_DEFAULT, [imsi, message_type]).
+
+-define(OPTIONAL_DEFAULT, [message_class]).
 
 -define (GSUP_MESSAGES(), #{
   16#04 => #{message_type => location_upd_req, mandatory => [], optional => [cn_domain]},
