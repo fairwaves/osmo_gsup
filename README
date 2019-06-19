@@ -1,0 +1,10 @@
+osmo_gsup - Osmocom GSUP interface library for Erlang
+=====================================================
+
+This repository contains an Erlang-language library that form the IPA and GSUP interfaces for [Osmocom](https://osmocom.org/) Open Source Mobile Communications projects.
+
+Documentation
+-------------
+
+There is no Doxygen-generated API documentation yet for this library. You can use **gsup_protocol.hrl** and function spec's in **gsup_protocol.erl** and **ipa.erl**. You can find the description of IPA and GSUP protocols here: [OSMOMSC Manual]
+(http://ftp.osmocom.org/docs/latest/osmomsc-usermanual.pdf)
