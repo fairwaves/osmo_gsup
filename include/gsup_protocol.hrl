@@ -40,7 +40,21 @@
                   | ready_for_sm_res
                   | check_imei_req
                   | check_imei_err
-                  | check_imei_res.
+                  | check_imei_res
+                  | e_prepare_handover_req
+                  | e_prepare_handover_err
+                  | e_prepare_handover_res
+                  | e_prepare_subseq_handover_req
+                  | e_prepare_subseq_handover_err
+                  | e_prepare_subseq_handover_res
+                  | e_send_end_signal_req
+                  | e_send_end_signal_err
+                  | e_send_end_signal_res
+                  | e_process_access_signalling_req
+                  | e_forward_access_signalling_req
+                  | e_close
+                  | e_abort
+                  | e_routing_err.
 
 -type 'GSUPMessage'() :: #{
   message_type := 'GSUPMessageType'(),
@@ -84,7 +98,13 @@
   sm_alert_reason => integer(),
   imei => binary(),
   imei_check_result => integer(),
-  message_class => integer()
+  message_class => integer(),
+  source_name => binary(),
+  destination_name => binary(),
+  an_apdu => binary(),
+  rr_cause => integer(),
+  session_management_cause => integer(),
+  bssap_cause => integer()
 }.
 
 -define(SESSION_STATE_BEGIN, 1).
@@ -127,6 +147,12 @@
 -define(SM_ALERT_REASON, 16#46).
 -define(IMEI, 16#50).
 -define(IMEI_CHECK_RESULT, 16#51).
+-define(SOURCE_NAME, 16#60).
+-define(DESTINATION_NAME, 16#61).
+-define(AN_APDU, 16#62).
+-define(RR_CAUSE, 16#63).
+-define(BSSAP_CAUSE, 16#64).
+-define(SESSION_MANAGEMENT_CAUSE, 16#65).
 
 -define(MANDATORY_DEFAULT, [imsi, message_type]).
 
@@ -166,7 +192,21 @@
   16#2e => #{message_type => ready_for_sm_res, mandatory => []},
   16#30 => #{message_type => check_imei_req, mandatory => [imei]},
   16#31 => #{message_type => check_imei_err, mandatory => [cause]},
-  16#32 => #{message_type => check_imei_res, mandatory => [imei_check_result]}
+  16#32 => #{message_type => check_imei_res, mandatory => [imei_check_result]},
+  16#34 => #{message_type => e_prepare_handover_req, mandatory => [message_class, source_name, destination_name, an_apdu, session_id, session_state]},
+  16#35 => #{message_type => e_prepare_handover_err, mandatory => [message_class, source_name, destination_name, an_apdu, session_id, session_state, bssap_cause]},
+  16#36 => #{message_type => e_prepare_handover_res, mandatory => [message_class, source_name, destination_name, an_apdu, session_id, session_state]},
+  16#38 => #{message_type => e_prepare_subseq_handover_req, mandatory => [message_class, source_name, destination_name, an_apdu, session_id, session_state]},
+  16#39 => #{message_type => e_prepare_subseq_handover_err, mandatory => [message_class, source_name, destination_name, an_apdu, session_id, session_state, bssap_cause]},
+  16#3a => #{message_type => e_prepare_subseq_handover_res, mandatory => [message_class, source_name, destination_name, an_apdu, session_id, session_state]},
+  16#3c => #{message_type => e_send_end_signal_req, mandatory => [message_class, source_name, destination_name, an_apdu, session_id, session_state]},
+  16#3d => #{message_type => e_send_end_signal_err, mandatory => [message_class, source_name, destination_name, an_apdu, session_id, session_state, bssap_cause]},
+  16#3e => #{message_type => e_send_end_signal_res, mandatory => [message_class, source_name, destination_name, an_apdu, session_id, session_state]},
+  16#40 => #{message_type => e_process_access_signalling_req, mandatory => [message_class, source_name, destination_name, an_apdu, session_id, session_state]},
+  16#44 => #{message_type => e_forward_access_signalling_req, mandatory => [message_class, source_name, destination_name, an_apdu, session_id, session_state]},
+  16#47 => #{message_type => e_close, mandatory => [message_class, source_name, destination_name, session_id, session_state]},
+  16#4b => #{message_type => e_abort, mandatory => [message_class, session_id, session_state, bssap_cause]},
+  16#4e => #{message_type => e_routing_err, mandatory => [message_class, source_name, destination_name, session_id, session_state]}
 }).
 
 -define(AUTH_TUPLE_MANDATORY, [rand, sres, kc]).

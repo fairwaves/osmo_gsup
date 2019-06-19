@@ -151,6 +151,27 @@ decode_ie(<<?IMEI_CHECK_RESULT, Len, IMEIResult:Len/unit:8, Tail/binary>>, Map) 
   ?CHECK_LEN(imei_check_result, Len, 1, 1),
   decode_ie(Tail, Map#{imei_check_result => IMEIResult});
 
+decode_ie(<<?SOURCE_NAME, Len, SourceName:Len/binary, Tail/binary>>, Map) ->
+  decode_ie(Tail, Map#{source_name => SourceName});
+
+decode_ie(<<?DESTINATION_NAME, Len, DestName:Len/binary, Tail/binary>>, Map) ->
+  decode_ie(Tail, Map#{destination_name => DestName});
+
+decode_ie(<<?AN_APDU, Len, AN_APDU:Len/binary, Tail/binary>>, Map) ->
+  decode_ie(Tail, Map#{an_apdu => AN_APDU});
+
+decode_ie(<<?RR_CAUSE, Len, RRCause:Len/unit:8, Tail/binary>>, Map) ->
+  ?CHECK_LEN(rr_cause, Len, 1, 1),
+  decode_ie(Tail, Map#{rr_cause => RRCause});
+
+decode_ie(<<?BSSAP_CAUSE, Len, BSSAPCause:Len/unit:8, Tail/binary>>, Map) ->
+  ?CHECK_LEN(bssap_cause, Len, 1, 1),
+  decode_ie(Tail, Map#{bssap_cause => BSSAPCause});
+
+decode_ie(<<?SESSION_MANAGEMENT_CAUSE, Len, SMCause:Len/unit:8, Tail/binary>>, Map) ->
+  ?CHECK_LEN(session_management_cause, Len, 1, 1),
+  decode_ie(Tail, Map#{session_management_cause => SMCause});
+
 decode_ie(<<_, Len, _:Len/binary, Tail/binary>>, Map) -> %% skip unknown IE
   decode_ie(Tail, Map);
 
@@ -414,6 +435,33 @@ encode_ie(#{imei_check_result := Value} = GSUPMessage, Head) ->
   Len = 1,
   ?CHECK_SIZE(imei_check_result, Len, Value),
   encode_ie(maps:without([imei_check_result], GSUPMessage), <<Head/binary, ?IMEI_CHECK_RESULT, Len, Value:Len/unit:8>>);
+
+encode_ie(#{source_name := Value} = GSUPMessage, Head) ->
+  Len = size(Value),
+  encode_ie(maps:without([source_name], GSUPMessage), <<Head/binary, ?SOURCE_NAME, Len, Value/binary>>);
+
+encode_ie(#{destination_name := Value} = GSUPMessage, Head) ->
+  Len = size(Value),
+  encode_ie(maps:without([destination_name], GSUPMessage), <<Head/binary, ?DESTINATION_NAME, Len, Value/binary>>);
+
+encode_ie(#{an_apdu := Value} = GSUPMessage, Head) ->
+  Len = size(Value),
+  encode_ie(maps:without([an_apdu], GSUPMessage), <<Head/binary, ?AN_APDU, Len, Value/binary>>);
+
+encode_ie(#{rr_cause := Value} = GSUPMessage, Head) ->
+  Len = 1,
+  ?CHECK_SIZE(rr_cause, Len, Value),
+  encode_ie(maps:without([rr_cause], GSUPMessage), <<Head/binary, ?RR_CAUSE, Len, Value:Len/unit:8>>);
+
+encode_ie(#{bssap_cause := Value} = GSUPMessage, Head) ->
+  Len = 1,
+  ?CHECK_SIZE(bssap_cause, Len, Value),
+  encode_ie(maps:without([bssap_cause], GSUPMessage), <<Head/binary, ?BSSAP_CAUSE, Len, Value:Len/unit:8>>);
+
+encode_ie(#{session_management_cause := Value} = GSUPMessage, Head) ->
+  Len = 1,
+  ?CHECK_SIZE(session_management_cause, Len, Value),
+  encode_ie(maps:without([session_management_cause], GSUPMessage), <<Head/binary, ?SESSION_MANAGEMENT_CAUSE, Len, Value:Len/unit:8>>);
 
 encode_ie(_, Head) -> Head.
 

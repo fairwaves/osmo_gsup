@@ -11,6 +11,11 @@
 -define(TEST_IMSI_IE, 16#01, 16#08, 16#21, 16#43, 16#65, 16#87, 16#09, 16#21, 16#43, 16#f5).
 -define(TEST_MSISDN_IE, 16#08, 16#07, 16#91, 16#94, 16#61, 16#46, 16#32, 16#24, 16#43).
 -define(TEST_CLASS_SUBSCR_IE, 16#0a, 16#01, 16#01).
+-define(TEST_CLASS_INTER_MSC_IE, 16#0a, 16#01, 16#04).
+-define(TEST_AN_APDU_IE, 16#62, 16#05, 16#01, 16#42, 16#42, 16#42, 16#42).
+-define(TEST_SOURCE_NAME_IE, 16#60, 16#05, "MSC-A").
+-define(TEST_DESTINATION_NAME_IE, 16#61, 16#05, "MSC-B").
+
 
 missing_params_test() ->
   ?assertError({mandatory_ie_missing,location_cancellation_err,[cause]}, gsup_protocol:decode(<<16#1d, ?TEST_IMSI_IE>>)),
@@ -391,6 +396,287 @@ check_imei_res_test() ->
   >>,
   Map = #{imei_check_result => 0,imsi => <<"123456789012345">>,
                    message_type => check_imei_res},
+  ?assertEqual(Map, gsup_protocol:decode(Bin)),
+  ?assertEqual(Bin, gsup_protocol:encode(Map)).
+
+e_prepare_handover_req_test() ->
+  Bin = <<16#34, ?TEST_IMSI_IE,
+    %% Session ID and state (begin)
+    16#30, 16#04, 16#de, 16#ad, 16#be, 16#ef,
+    16#31, 16#01, 16#01,
+
+    ?TEST_CLASS_INTER_MSC_IE,
+    ?TEST_SOURCE_NAME_IE,
+    ?TEST_DESTINATION_NAME_IE,
+    ?TEST_AN_APDU_IE %% (Handover Request)
+  >>,
+  Map = #{an_apdu => <<1,66,66,66,66>>,
+                   destination_name => <<"MSC-B">>,
+                   imsi => <<"123456789012345">>,message_class => 4,
+                   message_type => e_prepare_handover_req,
+                   session_id => 3735928559,session_state => 1,
+                   source_name => <<"MSC-A">>},
+  ?assertEqual(Map, gsup_protocol:decode(Bin)),
+  ?assertEqual(Bin, gsup_protocol:encode(Map)).
+
+e_prepare_handover_err_test() ->
+  Bin = <<16#35, ?TEST_IMSI_IE,
+    %% Session ID and state (continue)
+    16#30, 16#04, 16#de, 16#ad, 16#be, 16#ef,
+    16#31, 16#01, 16#02,
+
+    ?TEST_CLASS_INTER_MSC_IE,
+    ?TEST_SOURCE_NAME_IE,
+    ?TEST_DESTINATION_NAME_IE,
+    ?TEST_AN_APDU_IE, %% (Handover Request) ??? unknown IE
+    %% cause bssap
+    16#64, 16#01, 16#51
+  >>,
+  Map = #{an_apdu => <<1,66,66,66,66>>,
+                   bssap_cause => 81,destination_name => <<"MSC-B">>,
+                   imsi => <<"123456789012345">>,message_class => 4,
+                   message_type => e_prepare_handover_err,
+                   session_id => 3735928559,session_state => 2,
+                   source_name => <<"MSC-A">>},
+  ?assertEqual(Map, gsup_protocol:decode(Bin)),
+  ?assertEqual(Bin, gsup_protocol:encode(Map)).
+
+e_prepare_handover_res_test() ->
+  Bin = <<16#36, ?TEST_IMSI_IE,
+    %% Session ID and state (continue)
+    16#30, 16#04, 16#de, 16#ad, 16#be, 16#ef,
+    16#31, 16#01, 16#02,
+
+    ?TEST_CLASS_INTER_MSC_IE,
+    ?TEST_SOURCE_NAME_IE,
+    ?TEST_DESTINATION_NAME_IE,
+    ?TEST_AN_APDU_IE %% (Handover Request)
+  >>,
+  Map = #{an_apdu => <<1,66,66,66,66>>,
+                   destination_name => <<"MSC-B">>,
+                   imsi => <<"123456789012345">>,message_class => 4,
+                   message_type => e_prepare_handover_res,
+                   session_id => 3735928559,session_state => 2,
+                   source_name => <<"MSC-A">>},
+  ?assertEqual(Map, gsup_protocol:decode(Bin)),
+  ?assertEqual(Bin, gsup_protocol:encode(Map)).
+
+e_prepare_subseq_handover_req_test() ->
+  Bin = <<16#38, ?TEST_IMSI_IE,
+    %% Session ID and state (begin)
+    16#30, 16#04, 16#de, 16#ad, 16#be, 16#ef,
+    16#31, 16#01, 16#01,
+
+    ?TEST_CLASS_INTER_MSC_IE,
+    ?TEST_SOURCE_NAME_IE,
+    ?TEST_DESTINATION_NAME_IE,
+    ?TEST_AN_APDU_IE %% (Handover Request)
+  >>,
+  Map = #{an_apdu => <<1,66,66,66,66>>,
+                   destination_name => <<"MSC-B">>,
+                   imsi => <<"123456789012345">>,message_class => 4,
+                   message_type => e_prepare_subseq_handover_req,
+                   session_id => 3735928559,session_state => 1,
+                   source_name => <<"MSC-A">>},
+  ?assertEqual(Map, gsup_protocol:decode(Bin)),
+  ?assertEqual(Bin, gsup_protocol:encode(Map)).
+
+e_prepare_subseq_handover_err_test() ->
+  Bin = <<16#39, ?TEST_IMSI_IE,
+    %% Session ID and state (continue)
+    16#30, 16#04, 16#de, 16#ad, 16#be, 16#ef,
+    16#31, 16#01, 16#02,
+
+    ?TEST_CLASS_INTER_MSC_IE,
+    ?TEST_SOURCE_NAME_IE,
+    ?TEST_DESTINATION_NAME_IE,
+    ?TEST_AN_APDU_IE, %% (Handover Request) ??? unknown IE
+    %% cause bssap
+    16#64, 16#01, 16#51
+  >>,
+  Map = #{an_apdu => <<1,66,66,66,66>>,
+                   bssap_cause => 81,destination_name => <<"MSC-B">>,
+                   imsi => <<"123456789012345">>,message_class => 4,
+                   message_type => e_prepare_subseq_handover_err,
+                   session_id => 3735928559,session_state => 2,
+                   source_name => <<"MSC-A">>},
+  ?assertEqual(Map, gsup_protocol:decode(Bin)),
+  ?assertEqual(Bin, gsup_protocol:encode(Map)).
+
+e_prepare_subseq_handover_res_test() ->
+  Bin = <<16#3a, ?TEST_IMSI_IE,
+    %% Session ID and state (continue)
+    16#30, 16#04, 16#de, 16#ad, 16#be, 16#ef,
+    16#31, 16#01, 16#02,
+
+    ?TEST_CLASS_INTER_MSC_IE,
+    ?TEST_SOURCE_NAME_IE,
+    ?TEST_DESTINATION_NAME_IE,
+    ?TEST_AN_APDU_IE %% (Handover Request)
+  >>,
+  Map = #{an_apdu => <<1,66,66,66,66>>,
+                   destination_name => <<"MSC-B">>,
+                   imsi => <<"123456789012345">>,message_class => 4,
+                   message_type => e_prepare_subseq_handover_res,
+                   session_id => 3735928559,session_state => 2,
+                   source_name => <<"MSC-A">>},
+  ?assertEqual(Map, gsup_protocol:decode(Bin)),
+  ?assertEqual(Bin, gsup_protocol:encode(Map)).
+
+e_send_end_signal_req_test() ->
+  Bin = <<16#3c, ?TEST_IMSI_IE,
+    %% Session ID and state (end)
+    16#30, 16#04, 16#de, 16#ad, 16#be, 16#ef,
+    16#31, 16#01, 16#03,
+
+    ?TEST_CLASS_INTER_MSC_IE,
+    ?TEST_SOURCE_NAME_IE,
+    ?TEST_DESTINATION_NAME_IE,
+    ?TEST_AN_APDU_IE %% (Handover Request)
+  >>,
+  Map = #{an_apdu => <<1,66,66,66,66>>,
+                   destination_name => <<"MSC-B">>,
+                   imsi => <<"123456789012345">>,message_class => 4,
+                   message_type => e_send_end_signal_req,
+                   session_id => 3735928559,session_state => 3,
+                   source_name => <<"MSC-A">>},
+  ?assertEqual(Map, gsup_protocol:decode(Bin)),
+  ?assertEqual(Bin, gsup_protocol:encode(Map)).
+
+e_send_end_signal_err_test() ->
+  Bin = <<16#3d, ?TEST_IMSI_IE,
+    %% Session ID and state (end)
+    16#30, 16#04, 16#de, 16#ad, 16#be, 16#ef,
+    16#31, 16#01, 16#03,
+
+    ?TEST_CLASS_INTER_MSC_IE,
+    ?TEST_SOURCE_NAME_IE,
+    ?TEST_DESTINATION_NAME_IE,
+    ?TEST_AN_APDU_IE, %% (Handover Request) ??? unknown IE
+    %% cause bssap
+    16#64, 16#01, 16#51
+  >>,
+  Map = #{an_apdu => <<1,66,66,66,66>>,
+                   bssap_cause => 81,destination_name => <<"MSC-B">>,
+                   imsi => <<"123456789012345">>,message_class => 4,
+                   message_type => e_send_end_signal_err,
+                   session_id => 3735928559,session_state => 3,
+                   source_name => <<"MSC-A">>},
+  ?assertEqual(Map, gsup_protocol:decode(Bin)),
+  ?assertEqual(Bin, gsup_protocol:encode(Map)).
+
+e_send_end_signal_res_test() ->
+  Bin = <<16#3e, ?TEST_IMSI_IE,
+    %% Session ID and state (end)
+    16#30, 16#04, 16#de, 16#ad, 16#be, 16#ef,
+    16#31, 16#01, 16#03,
+
+    ?TEST_CLASS_INTER_MSC_IE,
+    ?TEST_SOURCE_NAME_IE,
+    ?TEST_DESTINATION_NAME_IE,
+    ?TEST_AN_APDU_IE %% (Handover Request)
+  >>,
+  Map = #{an_apdu => <<1,66,66,66,66>>,
+                   destination_name => <<"MSC-B">>,
+                   imsi => <<"123456789012345">>,message_class => 4,
+                   message_type => e_send_end_signal_res,
+                   session_id => 3735928559,session_state => 3,
+                   source_name => <<"MSC-A">>},
+  ?assertEqual(Map, gsup_protocol:decode(Bin)),
+  ?assertEqual(Bin, gsup_protocol:encode(Map)).
+
+e_process_access_signalling_req_test() ->
+  Bin = <<16#40, ?TEST_IMSI_IE,
+    %% Session ID and state (continue)
+    16#30, 16#04, 16#de, 16#ad, 16#be, 16#ef,
+    16#31, 16#01, 16#02,
+
+    ?TEST_CLASS_INTER_MSC_IE,
+    ?TEST_SOURCE_NAME_IE,
+    ?TEST_DESTINATION_NAME_IE,
+    ?TEST_AN_APDU_IE %% (Handover Request)
+  >>,
+  Map = #{an_apdu => <<1,66,66,66,66>>,
+                   destination_name => <<"MSC-B">>,
+                   imsi => <<"123456789012345">>,message_class => 4,
+                   message_type => e_process_access_signalling_req,
+                   session_id => 3735928559,session_state => 2,
+                   source_name => <<"MSC-A">>},
+  ?assertEqual(Map, gsup_protocol:decode(Bin)),
+  ?assertEqual(Bin, gsup_protocol:encode(Map)).
+
+e_forward_access_signalling_req_test() ->
+  Bin = <<16#44, ?TEST_IMSI_IE,
+    %% Session ID and state (continue)
+    16#30, 16#04, 16#de, 16#ad, 16#be, 16#ef,
+    16#31, 16#01, 16#02,
+
+    ?TEST_CLASS_INTER_MSC_IE,
+    ?TEST_SOURCE_NAME_IE,
+    ?TEST_DESTINATION_NAME_IE,
+    ?TEST_AN_APDU_IE %% (Handover Request)
+  >>,
+  Map = #{an_apdu => <<1,66,66,66,66>>,
+                   destination_name => <<"MSC-B">>,
+                   imsi => <<"123456789012345">>,message_class => 4,
+                   message_type => e_forward_access_signalling_req,
+                   session_id => 3735928559,session_state => 2,
+                   source_name => <<"MSC-A">>},
+  ?assertEqual(Map, gsup_protocol:decode(Bin)),
+  ?assertEqual(Bin, gsup_protocol:encode(Map)).
+
+e_close_test() ->
+  Bin = <<16#47, ?TEST_IMSI_IE,
+    %% Session ID and state (end)
+    16#30, 16#04, 16#de, 16#ad, 16#be, 16#ef,
+    16#31, 16#01, 16#03,
+
+    ?TEST_CLASS_INTER_MSC_IE,
+    ?TEST_SOURCE_NAME_IE,
+    ?TEST_DESTINATION_NAME_IE
+  >>,
+  Map = #{
+                   destination_name => <<"MSC-B">>,
+                   imsi => <<"123456789012345">>,message_class => 4,
+                   message_type => e_close,
+                   session_id => 3735928559,session_state => 3,
+                   source_name => <<"MSC-A">>},
+  ?assertEqual(Map, gsup_protocol:decode(Bin)),
+  ?assertEqual(Bin, gsup_protocol:encode(Map)).
+
+e_abort_test() ->
+  Bin = <<16#4b, ?TEST_IMSI_IE,
+    %% Session ID and state (end)
+    16#30, 16#04, 16#de, 16#ad, 16#be, 16#ef,
+    16#31, 16#01, 16#03,
+
+    ?TEST_CLASS_INTER_MSC_IE,
+     %% cause bssap
+    16#64, 16#01, 16#51
+ >>,
+  Map = #{
+                   imsi => <<"123456789012345">>,message_class => 4,
+                   bssap_cause => 81,message_type => e_abort,
+                   session_id => 3735928559,session_state => 3},
+  ?assertEqual(Map, gsup_protocol:decode(Bin)),
+  ?assertEqual(Bin, gsup_protocol:encode(Map)).
+
+e_routing_error_test() ->
+  Bin = <<16#4e, ?TEST_IMSI_IE,
+    %% Session ID and state (end)
+    16#30, 16#04, 16#de, 16#ad, 16#be, 16#ef,
+    16#31, 16#01, 16#03,
+
+    ?TEST_CLASS_INTER_MSC_IE,
+    ?TEST_SOURCE_NAME_IE,
+    ?TEST_DESTINATION_NAME_IE
+  >>,
+  Map = #{
+                   destination_name => <<"MSC-B">>,
+                   imsi => <<"123456789012345">>,message_class => 4,
+                   message_type => e_routing_err,
+                   session_id => 3735928559,session_state => 3,
+                   source_name => <<"MSC-A">>},
   ?assertEqual(Map, gsup_protocol:decode(Bin)),
   ?assertEqual(Bin, gsup_protocol:encode(Map)).
 
