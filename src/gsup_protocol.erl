@@ -96,11 +96,11 @@ decode_ie(<<?PDP_CHARGING, Len, PDPCharging:Len/unit:8, Tail/binary>>, Map) ->
   ?CHECK_LEN(pdp_charging, Len, 2, 2),
   decode_ie(Tail, Map#{pdp_charging => PDPCharging});
 
-decode_ie(<<?RAND, Len, Rand:Len/unit:8, Tail/binary>>, Map) ->
+decode_ie(<<?RAND, Len, Rand:Len/binary, Tail/binary>>, Map) ->
   ?CHECK_LEN(rand, Len, 16, 16),
   decode_ie(Tail, Map#{rand => Rand});
 
-decode_ie(<<?AUTS, Len, AUTS:Len/unit:8, Tail/binary>>, Map) ->
+decode_ie(<<?AUTS, Len, AUTS:Len/binary, Tail/binary>>, Map) ->
   ?CHECK_LEN(auts, Len, 14, 14),
   decode_ie(Tail, Map#{auts => AUTS});
 
@@ -287,6 +287,16 @@ encode_ie(#{auth_tuples := Tuples0} = GSUPMessage, Head) ->
     end || Tuple <- Tuples0>>,
   encode_ie(maps:without([auth_tuples], GSUPMessage), <<Head/binary, Tuples/binary>>);
 
+encode_ie(#{msisdn := Value} = GSUPMessage, Head) ->
+  Len = size(Value),
+  ?CHECK_LEN(msisdn, Len, 0, 8),
+  encode_ie(maps:without([msisdn], GSUPMessage), <<Head/binary, ?MSISDN, Len, Value/binary>>);
+
+encode_ie(#{hlr_number := Value} = GSUPMessage, Head) ->
+  Len = size(Value),
+  ?CHECK_LEN(hlr_number, Len, 0, 8),
+  encode_ie(maps:without([hlr_number], GSUPMessage), <<Head/binary, ?HLR_NUMBER, Len, Value/binary>>);
+
 encode_ie(#{pdp_info_complete := true} = GSUPMessage, Head) ->
   encode_ie(maps:without([pdp_info_complete], GSUPMessage), <<Head/binary, ?PDP_INFO_COMPLETE, 0>>);
 
@@ -315,15 +325,15 @@ encode_ie(#{freeze_p_tmsi := true} = GSUPMessage, Head) ->
 encode_ie(#{freeze_p_tmsi := _} = _GSUPMessage, _Head) ->
   error(freeze_p_tmsi_must_be_true);
 
-encode_ie(#{msisdn := Value} = GSUPMessage, Head) ->
-  Len = size(Value),
-  ?CHECK_LEN(msisdn, Len, 0, 8),
-  encode_ie(maps:without([msisdn], GSUPMessage), <<Head/binary, ?MSISDN, Len, Value/binary>>);
+encode_ie(#{session_id := Value} = GSUPMessage, Head) ->
+  Len = 4,
+  ?CHECK_SIZE(session_id, Len, Value),
+  encode_ie(maps:without([session_id], GSUPMessage), <<Head/binary, ?SESSION_ID, Len, Value:Len/unit:8>>);
 
-encode_ie(#{hlr_number := Value} = GSUPMessage, Head) ->
-  Len = size(Value),
-  ?CHECK_LEN(hlr_number, Len, 0, 8),
-  encode_ie(maps:without([hlr_number], GSUPMessage), <<Head/binary, ?HLR_NUMBER, Len, Value/binary>>);
+encode_ie(#{session_state := Value} = GSUPMessage, Head) ->
+  Len = 1,
+  ?CHECK_SIZE(session_state, Len, Value),
+  encode_ie(maps:without([session_state], GSUPMessage), <<Head/binary, ?SESSION_STATE, Len, Value:Len/unit:8>>);
 
 encode_ie(#{message_class := Value} = GSUPMessage, Head) ->
   Len = 1,
@@ -344,30 +354,20 @@ encode_ie(#{pdp_charging := Value} = GSUPMessage, Head) ->
   ?CHECK_SIZE(pdp_charging, Len, Value),
   encode_ie(maps:without([pdp_charging], GSUPMessage), <<Head/binary, ?PDP_CHARGING, Len, Value:Len/unit:8>>);
 
-encode_ie(#{rand := Value} = GSUPMessage, Head) ->
-  Len = 16,
-  ?CHECK_LEN(rand, size(Value), Len, Len),
-  encode_ie(maps:without([rand], GSUPMessage), <<Head/binary, ?RAND, Len, Value:Len/unit:8>>);
-
 encode_ie(#{auts := Value} = GSUPMessage, Head) ->
   Len = 14,
   ?CHECK_LEN(auts, size(Value), Len, Len),
-  encode_ie(maps:without([auts], GSUPMessage), <<Head/binary, ?AUTS, Len, Value:Len/unit:8>>);
+  encode_ie(maps:without([auts], GSUPMessage), <<Head/binary, ?AUTS, Len, Value:Len/binary>>);
+
+encode_ie(#{rand := Value} = GSUPMessage, Head) ->
+  Len = 16,
+  ?CHECK_LEN(rand, size(Value), Len, Len),
+  encode_ie(maps:without([rand], GSUPMessage), <<Head/binary, ?RAND, Len, Value:Len/binary>>);
 
 encode_ie(#{cn_domain := Value} = GSUPMessage, Head) ->
   Len = 1,
   ?CHECK_SIZE(cn_domain, Len, Value),
   encode_ie(maps:without([cn_domain], GSUPMessage), <<Head/binary, ?CN_DOMAIN, Len, Value:Len/unit:8>>);
-
-encode_ie(#{session_id := Value} = GSUPMessage, Head) ->
-  Len = 4,
-  ?CHECK_SIZE(session_id, Len, Value),
-  encode_ie(maps:without([session_id], GSUPMessage), <<Head/binary, ?SESSION_ID, Len, Value:Len/unit:8>>);
-
-encode_ie(#{session_state := Value} = GSUPMessage, Head) ->
-  Len = 1,
-  ?CHECK_SIZE(session_state, Len, Value),
-  encode_ie(maps:without([session_state], GSUPMessage), <<Head/binary, ?SESSION_STATE, Len, Value:Len/unit:8>>);
 
 encode_ie(#{ss_info := Value} = GSUPMessage, Head) ->
   Len = size(Value),
@@ -407,6 +407,7 @@ encode_ie(#{sm_alert_reason := Value} = GSUPMessage, Head) ->
 
 encode_ie(#{imei := Value} = GSUPMessage, Head) ->
   Len = size(Value),
+  ?CHECK_LEN(imei, Len, 9, 9),
   encode_ie(maps:without([imei], GSUPMessage), <<Head/binary, ?IMEI, Len, Value/binary>>);
 
 encode_ie(#{imei_check_result := Value} = GSUPMessage, Head) ->

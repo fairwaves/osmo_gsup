@@ -10,7 +10,7 @@
 
 -export ([decode/1, encode/1]).
 
--spec decode(binary()) -> {ok, binary()} | {reply, ping | resp | ack, binary(), binary()} | {more_data, binary()} | {error, term()}.
+-spec decode(binary()) -> {ok, {binary(), binary()}} | {reply, ping | resp | ack, binary(), binary()} | {more_data, binary()} | {error, term()}.
 decode(<<1:16, ?IPAC_PROTO_IPACCESS, ?IPAC_MSGT_PING, Rest/binary>>) ->
   {reply, ping, <<1:16, ?IPAC_PROTO_IPACCESS, ?IPAC_MSGT_PONG>>, Rest};
 
@@ -28,7 +28,7 @@ decode(<<PSize:16, ?IPAC_PROTO_OSMO, Packet:PSize/binary, Rest/binary>>) ->
       {error, {bad_protocol_extension, X}}
   end;
 
-decode(<<_PSize:16, X, _/binary>>) when X /= ?IPAC_PROTO_OSMO ->
+decode(<<_PSize:16, X, _, _/binary>>) when X /= ?IPAC_PROTO_OSMO ->
   {error, {bad_stream_id, X}};
 
 decode(Rest) ->
