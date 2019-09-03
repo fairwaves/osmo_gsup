@@ -199,7 +199,7 @@
   16#32 => #{message_type => check_imei_res, mandatory => [imei_check_result]},
   16#34 => #{message_type => e_prepare_handover_req, mandatory => [message_class, source_name, destination_name, an_apdu], optional => [session_id, session_state]},
   16#35 => #{message_type => e_prepare_handover_err, mandatory => [message_class, source_name, destination_name, an_apdu, bssap_cause], optional => [session_id, session_state]},
-  16#36 => #{message_type => e_prepare_handover_res, mandatory => [message_class, source_name, destination_name, an_apdu], optional => [session_id, session_state]},
+  16#36 => #{message_type => e_prepare_handover_res, mandatory => [message_class, source_name, destination_name, an_apdu, msisdn], optional => [session_id, session_state]},
   16#38 => #{message_type => e_prepare_subseq_handover_req, mandatory => [message_class, source_name, destination_name, an_apdu], optional => [session_id, session_state]},
   16#39 => #{message_type => e_prepare_subseq_handover_err, mandatory => [message_class, source_name, destination_name, an_apdu, bssap_cause], optional => [session_id, session_state]},
   16#3a => #{message_type => e_prepare_subseq_handover_res, mandatory => [message_class, source_name, destination_name, an_apdu], optional => [session_id, session_state]},

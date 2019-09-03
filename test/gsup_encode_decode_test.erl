@@ -442,7 +442,7 @@ e_prepare_handover_err_test() ->
   ?assertEqual(Bin, gsup_protocol:encode(Map)).
 
 e_prepare_handover_res_test() ->
-  Bin = <<16#36, ?TEST_IMSI_IE,
+  Bin = <<16#36, ?TEST_IMSI_IE, ?TEST_MSISDN_IE,
     %% Session ID and state (continue)
     16#30, 16#04, 16#de, 16#ad, 16#be, 16#ef,
     16#31, 16#01, 16#02,
@@ -456,6 +456,7 @@ e_prepare_handover_res_test() ->
                    destination_name => <<"MSC-B">>,
                    imsi => <<"123456789012345">>,message_class => 4,
                    message_type => e_prepare_handover_res,
+                   msisdn => <<145,148,97,70,50,36,67>>,
                    session_id => 3735928559,session_state => 2,
                    source_name => <<"MSC-A">>},
   ?assertEqual(Map, gsup_protocol:decode(Bin)),
